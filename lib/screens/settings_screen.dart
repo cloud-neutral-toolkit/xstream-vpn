@@ -715,6 +715,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
+              context.l10n.get('settingsCenter'),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildSection(context.l10n.get('desktopSync'), [
+              _buildDesktopSyncCard(context),
+            ]),
+            Text(
               context.l10n.get('advancedConfig'),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
@@ -939,7 +947,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: GlobalState.tunnelProxyEnabled,
+                    builder: (context, enabled, _) {
+                      return SwitchListTile(
+                        value: enabled,
+                        onChanged: (value) {
+                          setState(() {
+                            GlobalState.tunnelProxyEnabled.value = value;
+                            GlobalState.connectionMode.value =
+                                value ? 'VPN' : '仅代理';
+                          });
+                          addAppLog('系统级网络隧道: ${value ? "开启" : "关闭"}');
+                          _refreshTunStatus();
+                        },
+                        title: const Text('隧道模式', style: TextStyle(fontSize: 16)),
+                        subtitle: const Text(
+                          '启用系统级网络隧道',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      );
+                    },
+                  ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Runtime MCP Server
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+              ),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _runtimeMcpService.available,
+                builder: (context, available, _) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: _runtimeMcpService.running,
+                    builder: (context, running, __) {
+                      return ValueListenableBuilder<bool>(
+                        valueListenable: _runtimeMcpService.loading,
+                        builder: (context, loading, ___) {
+                          final subtitle = available
+                              ? (running
+                                  ? context.l10n.get('runtimeMcpStatusRunning')
+                                  : context.l10n.get('runtimeMcpStatusStopped'))
+                              : context.l10n.get('runtimeMcpStatusUnavailable');
+                          return SwitchListTile(
+                            value: running,
+                            onChanged: available && !loading
+                                ? _toggleRuntimeMcp
+                                : null,
+                            title: Text(context.l10n.get('runtimeMcpServer'), style: const TextStyle(fontSize: 16)),
+                            subtitle: Text(
+                              loading
+                                  ? context.l10n.get('runtimeMcpStatusLoading')
+                                  : subtitle,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
               ),
             ),
             const SizedBox(height: 20),
@@ -969,6 +1042,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 20),
+            // Permission Guide & Reset
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.security),
+                label: Text(context.l10n.get('permissionGuide'), style: const TextStyle(fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple.withValues(alpha: 0.05),
+                  foregroundColor: Colors.deepPurple,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+                onPressed: _showPermissionGuide,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<bool>(
+              valueListenable: GlobalState.isUnlocked,
+              builder: (context, isUnlocked, _) {
+                return SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.restore),
+                    label: Text(context.l10n.get('resetAll'), style: const TextStyle(fontSize: 16)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[500],
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                    onPressed: isUnlocked ? _onResetAll : null,
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 32),
           ],

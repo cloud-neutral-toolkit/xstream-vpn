@@ -261,9 +261,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   private func resolvePacketFlowFileDescriptor() -> (fd: Int32, detail: String) {
-    guard let flowObj = packetFlow as? NSObject else {
-      return (-1, "packetFlow is not NSObject")
-    }
+    let flowObj = packetFlow as NSObject
 
     let keyPaths = [
       "socket.fileDescriptor",
@@ -274,7 +272,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       "_packetSocket.fd",
     ]
     for keyPath in keyPaths {
-      if let number = try? flowObj.value(forKeyPath: keyPath) as? NSNumber {
+      if let number = flowObj.value(forKeyPath: keyPath) as? NSNumber {
         let fd = number.int32Value
         if fd >= 0 {
           return (fd, "packetFlow.\(keyPath)")

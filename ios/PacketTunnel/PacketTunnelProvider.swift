@@ -37,7 +37,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let egressInterface = self.monitor.currentPath.availableInterfaces.first(where: { !$0.name.contains("utun") })?.name ?? ""
 
         do {
-          let configData = self.resolveConfigData(options: map)
+          let configData = self.sanitizeConfigForDarwinTun(self.resolveConfigData(options: map))
           try self.engine.start(config: configData, fd: fd, egressInterface: egressInterface)
           self.statusStore.markConnected()
           completionHandler(nil)
@@ -83,6 +83,52 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return data as Data
     }
     return Data()
+  }
+
+  private func sanitizeConfigForDarwinTun(_ data: Data) -> Data {
+    guard !data.isEmpty else {
+      return data
+    }
+    guard
+      let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      var inbounds = root["inbounds"] as? [[String: Any]]
+    else {
+      return data
+    }
+
+    var updated = false
+    for index in inbounds.indices {
+      guard
+        let protocolName = inbounds[index]["protocol"] as? String,
+        protocolName == "tun",
+        var settings = inbounds[index]["settings"] as? [String: Any]
+      else {
+        continue
+      }
+
+      for key in ["interfaceName", "name", "interface"] {
+        guard let raw = settings[key] as? String else {
+          continue
+        }
+        let isValidUtun = raw.range(
+          of: #"^utun[0-9]+$"#,
+          options: .regularExpression
+        ) != nil
+        if !isValidUtun {
+          settings.removeValue(forKey: key)
+          updated = true
+        }
+      }
+      inbounds[index]["settings"] = settings
+    }
+
+    guard updated else {
+      return data
+    }
+
+    var patched = root
+    patched["inbounds"] = inbounds
+    return (try? JSONSerialization.data(withJSONObject: patched)) ?? data
   }
 
   private func shouldEnableIPv6(options: [String: NSObject], launchOptions: [String: NSObject]?) -> Bool {

@@ -149,7 +149,6 @@ extension AppDelegate {
       return
     }
 
-    let escapedSourceConfig = shellEscaped(sourceConfig)
     let escapedRuntimeConfig = shellEscaped(runtimeConfigPath)
     let escapedRuntimeLog = shellEscaped(runtimeLogPath)
     let escapedXray = shellEscaped(xrayExecutable)
@@ -158,17 +157,32 @@ extension AppDelegate {
 let prepareCommand = """
 XRAY_CFG=\(escapedRuntimeConfig)
 XRAY_LOG=\(escapedRuntimeLog)
-SRC_CFG=\(escapedSourceConfig)
 mkdir -p "$(dirname "$XRAY_CFG")"
 mkdir -p "$(dirname "$XRAY_LOG")"
-if [ "$SRC_CFG" != "$XRAY_CFG" ]; then
-  cp -f "$SRC_CFG" "$XRAY_CFG"
-fi
 : > "$XRAY_LOG"
 """
     let (prepareOK, prepareOutput) = runCommandAndCapture(command: prepareCommand)
     if !prepareOK {
       result(FlutterError(code: "PREPARE_FAILED", message: "prepare config failed", details: prepareOutput))
+      return
+    }
+    do {
+      let removedTunInbounds = try prepareDirectRuntimeConfig(
+        sourcePath: sourceConfig,
+        runtimeConfigPath: runtimeConfigPath
+      )
+      if removedTunInbounds > 0 {
+        logToFlutter("info", "direct runtime config sanitized: removed \(removedTunInbounds) tun inbound(s)")
+      }
+    } catch {
+      clearActiveNodeName()
+      result(
+        FlutterError(
+          code: "PREPARE_FAILED",
+          message: "prepare runtime config failed",
+          details: error.localizedDescription
+        )
+      )
       return
     }
 
@@ -293,6 +307,50 @@ sleep 1
     } catch {
       return (false, error.localizedDescription)
     }
+  }
+
+  private func prepareDirectRuntimeConfig(
+    sourcePath: String,
+    runtimeConfigPath: String
+  ) throws -> Int {
+    let sourceData = try Data(contentsOf: URL(fileURLWithPath: sourcePath))
+    var removedTunInbounds = 0
+
+    if var doc = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any],
+       let inbounds = doc["inbounds"] as? [Any] {
+      let filteredInbounds = inbounds.filter { inbound in
+        guard let map = inbound as? [String: Any] else {
+          return true
+        }
+        let protocolName = (map["protocol"] as? String)?.lowercased() ?? ""
+        if protocolName == "tun" {
+          removedTunInbounds += 1
+          return false
+        }
+        return true
+      }
+      doc["inbounds"] = filteredInbounds
+      let outputData = try JSONSerialization.data(
+        withJSONObject: doc,
+        options: [.prettyPrinted, .sortedKeys]
+      )
+      try outputData.write(
+        to: URL(fileURLWithPath: runtimeConfigPath),
+        options: [.atomic]
+      )
+      return removedTunInbounds
+    }
+
+    // Fallback for unexpected structure: preserve existing behavior by copying as-is.
+    let fm = FileManager.default
+    if sourcePath == runtimeConfigPath {
+      return 0
+    }
+    if fm.fileExists(atPath: runtimeConfigPath) {
+      try fm.removeItem(atPath: runtimeConfigPath)
+    }
+    try fm.copyItem(atPath: sourcePath, toPath: runtimeConfigPath)
+    return 0
   }
 
   private func resolvedAppSupportRoot() -> URL? {

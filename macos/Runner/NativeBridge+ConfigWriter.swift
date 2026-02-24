@@ -11,19 +11,18 @@ extension AppDelegate {
           let servicePath = args["servicePath"] as? String,
           let serviceContent = args["serviceContent"] as? String,
           let vpnNodesConfigPath = args["vpnNodesConfigPath"] as? String,
-          let vpnNodesConfigContent = args["vpnNodesConfigContent"] as? String,
-          let sudoPass = args["password"] as? String else {
+          let vpnNodesConfigContent = args["vpnNodesConfigContent"] as? String else {
       result(FlutterError(code: "INVALID_ARGS", message: "缺少必要的参数", details: nil))
       return
     }
 
     do {
       // 写入 Xray 配置文件
-      try writeXrayConfig(path: xrayConfigPath, content: xrayConfigContent, password: sudoPass, result: result)
+      try writeXrayConfig(path: xrayConfigPath, content: xrayConfigContent)
       // 写入 Plist 配置文件
-      try writePlistFile(path: servicePath, content: serviceContent, password: sudoPass, result: result)
+      try writePlistFile(path: servicePath, content: serviceContent)
       // 更新 vpn_nodes.json 文件
-      try updateVpnNodesConfig(path: vpnNodesConfigPath, content: vpnNodesConfigContent, password: sudoPass, result: result)
+      try updateVpnNodesConfig(path: vpnNodesConfigPath, content: vpnNodesConfigContent)
       // 返回成功消息
       result("Configuration files written successfully")
     } catch {
@@ -33,18 +32,18 @@ extension AppDelegate {
     }
   }
 
-  private func writeXrayConfig(path: String, content: String, password: String, result: @escaping FlutterResult) throws {
-    logToFlutter("info", "创建 Xray 配置文件: \(path)")
-    try runPrivilegedWrite(path: path, content: content, password: password, result: result)
+  private func writeXrayConfig(path: String, content: String) throws {
+    self.logToFlutter("info", "创建 Xray 配置文件: \(path)")
+    try writeStringToFile(path: path, content: content)
   }
 
-  private func writePlistFile(path: String, content: String, password: String, result: @escaping FlutterResult) throws {
-    logToFlutter("info", "写入 LaunchAgent plist: \(path)")
-    try runPrivilegedWrite(path: path, content: content, password: password, result: result)
+  private func writePlistFile(path: String, content: String) throws {
+    self.logToFlutter("info", "写入 LaunchAgent plist: \(path)")
+    try writeStringToFile(path: path, content: content)
   }
 
-  private func updateVpnNodesConfig(path: String, content: String, password: String, result: @escaping FlutterResult) throws {
-    logToFlutter("info", "更新 vpn_nodes.json: \(path)")
+  private func updateVpnNodesConfig(path: String, content: String) throws {
+    self.logToFlutter("info", "更新 vpn_nodes.json: \(path)")
     let fileManager = FileManager.default
     
     // 确保目录存在
@@ -59,16 +58,11 @@ extension AppDelegate {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         if data.count > 0 {
           vpnNodes = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] ?? []
-          logToFlutter("info", "读取现有配置成功: \(path), 已有节点数: \(vpnNodes.count)")
-        } else {
-          logToFlutter("info", "配置文件为空，初始化为空数组: \(path)")
+          self.logToFlutter("info", "读取现有配置成功: \(path), 已有节点数: \(vpnNodes.count)")
         }
       } catch {
-        logToFlutter("warning", "读取现有配置失败，将创建新配置: \(error.localizedDescription)")
-        vpnNodes = []
+        self.logToFlutter("warning", "读取现有配置失败: \(error.localizedDescription)")
       }
-    } else {
-      logToFlutter("info", "配置文件不存在，将创建新文件: \(path)")
     }
 
     // 解析新的节点数据
@@ -81,15 +75,12 @@ extension AppDelegate {
     for newNode in newNodes {
       guard let newNodeName = newNode["name"] as? String else { continue }
       
-      // 检查是否已存在同名节点，如果存在则更新，否则添加
       if let existingIndex = vpnNodes.firstIndex(where: { node in
         (node["name"] as? String) == newNodeName
       }) {
         vpnNodes[existingIndex] = newNode
-        logToFlutter("info", "更新现有节点: \(newNodeName)")
       } else {
         vpnNodes.append(newNode)
-        logToFlutter("info", "添加新节点: \(newNodeName)")
       }
     }
 
@@ -98,30 +89,14 @@ extension AppDelegate {
     let finalContent = String(data: updatedJson, encoding: .utf8) ?? "[]"
 
     // 将更新后的内容写入文件
-    try runPrivilegedWrite(path: path, content: finalContent, password: password, result: result)
-    logToFlutter("info", "vpn_nodes.json 写入成功: \(path), 总节点数: \(vpnNodes.count)")
+    try writeStringToFile(path: path, content: finalContent)
+    self.logToFlutter("info", "vpn_nodes.json 写入成功: \(path), 总节点数: \(vpnNodes.count)")
   }
 
-  private func runPrivilegedWrite(path: String, content: String, password: String, result: @escaping FlutterResult) throws {
-    // 创建临时文件来避免内容转义问题
-    let tempFile = NSTemporaryDirectory() + "xstream_temp_\(UUID().uuidString).json"
-    
-    // 将内容写入临时文件
-    try content.write(toFile: tempFile, atomically: true, encoding: .utf8)
-    
-    // 使用 sudo 将临时文件复制到目标位置
-    let script = "echo \"\(password)\" | sudo -S cp \"\(tempFile)\" \"\(path)\""
-    
-    runShellScript(command: script, returnsBool: true) { shellResult in
-      // 清理临时文件
-      do {
-        try FileManager.default.removeItem(atPath: tempFile)
-      } catch {
-        self.logToFlutter("warning", "清理临时文件失败: \(error.localizedDescription)")
-      }
-      
-      // 返回 shell 脚本的结果
-      result(shellResult)
-    }
+  private func writeStringToFile(path: String, content: String) throws {
+    let fileUrl = URL(fileURLWithPath: path)
+    let directoryUrl = fileUrl.deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: directoryUrl, withIntermediateDirectories: true, attributes: nil)
+    try content.write(to: fileUrl, atomically: true, encoding: .utf8)
   }
 }

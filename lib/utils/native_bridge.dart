@@ -33,6 +33,20 @@ class NativeBridge {
 
   static bool get _isMobile => Platform.isIOS || Platform.isAndroid;
 
+  static String _platformErrorSummary(PlatformException e) {
+    final parts = <String>[];
+    if (e.code.isNotEmpty && e.code != 'error') {
+      parts.add('code=${e.code}');
+    }
+    if (e.message != null && e.message!.trim().isNotEmpty) {
+      parts.add('message=${e.message!.trim()}');
+    }
+    if (e.details != null && e.details.toString().trim().isNotEmpty) {
+      parts.add('details=${e.details}');
+    }
+    return parts.isEmpty ? e.toString() : parts.join(', ');
+  }
+
   static const _tunStatusFallback = PacketTunnelStatus(
     status: 'unsupported',
     utunInterfaces: [],
@@ -124,8 +138,7 @@ class NativeBridge {
   }
 
   /// Whether the current connection mode is TUN (VPN / Packet Tunnel).
-  static bool get isTunMode =>
-      GlobalState.connectionMode.value == 'VPN';
+  static bool get isTunMode => GlobalState.connectionMode.value == 'VPN';
 
   /// Start node via Packet Tunnel (TUN mode).
   ///
@@ -189,7 +202,7 @@ class NativeBridge {
         }
         return result ?? 'Packet Tunnel 启动请求已提交';
       } on PlatformException catch (e) {
-        return '启动失败: ${e.message ?? e.code}';
+        return '启动失败: ${_platformErrorSummary(e)}';
       } catch (e) {
         return '启动失败: $e';
       }
@@ -209,7 +222,7 @@ class NativeBridge {
             ? 'Packet Tunnel 启动请求已提交 ($nodeName)'
             : saveResult;
       } on PlatformException catch (e) {
-        return '启动失败: ${e.message ?? e.code}';
+        return '启动失败: ${_platformErrorSummary(e)}';
       } catch (e) {
         return '启动失败: $e';
       }
@@ -860,7 +873,7 @@ class NativeBridge {
       } on MissingPluginException {
         return '插件未实现';
       } on PlatformException catch (e) {
-        return '启动失败: ${e.message ?? e.code}';
+        return '启动失败: ${_platformErrorSummary(e)}';
       } catch (e) {
         return '启动失败: $e';
       }
@@ -885,7 +898,7 @@ class NativeBridge {
     } on MissingPluginException {
       return '插件未实现';
     } on PlatformException catch (e) {
-      return '启动失败: ${e.message ?? e.code}';
+      return '启动失败: ${_platformErrorSummary(e)}';
     } catch (e) {
       return '启动失败: $e';
     }
@@ -900,7 +913,7 @@ class NativeBridge {
       } on MissingPluginException {
         return '插件未实现';
       } on PlatformException catch (e) {
-        return '停止失败: ${e.message ?? e.code}';
+        return '停止失败: ${_platformErrorSummary(e)}';
       } catch (e) {
         return '停止失败: $e';
       }
@@ -914,7 +927,7 @@ class NativeBridge {
     } on MissingPluginException {
       return '插件未实现';
     } on PlatformException catch (e) {
-      return '停止失败: ${e.message ?? e.code}';
+      return '停止失败: ${_platformErrorSummary(e)}';
     } catch (e) {
       return '停止失败: $e';
     }

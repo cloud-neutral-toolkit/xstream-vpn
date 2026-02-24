@@ -156,8 +156,9 @@ class DarwinHostApiImpl: DarwinHostApi {
 
     loadOrCreateTunnelManager { manager, error in
       if let error {
-        self.writeLastError(error.localizedDescription)
-        self.emitPacketTunnelError(code: "manager-load-failed", message: error.localizedDescription)
+        let errorMessage = self.describeError(error)
+        self.writeLastError(errorMessage)
+        self.emitPacketTunnelError(code: "manager-load-failed", message: errorMessage)
         completion(.failure(error))
         return
       }
@@ -199,8 +200,9 @@ class DarwinHostApiImpl: DarwinHostApi {
           self.emitPacketTunnelStateChanged()
           completion(.success(()))
         } catch {
-          self.writeLastError(error.localizedDescription)
-          self.emitPacketTunnelError(code: "start-failed", message: error.localizedDescription)
+          let errorMessage = self.describeError(error)
+          self.writeLastError(errorMessage)
+          self.emitPacketTunnelError(code: "start-failed", message: errorMessage)
           completion(.failure(error))
         }
       }
@@ -210,8 +212,9 @@ class DarwinHostApiImpl: DarwinHostApi {
   func stopPacketTunnel(completion: @escaping (Result<Void, Error>) -> Void) {
     loadTunnelManager { manager, error in
       if let error {
-        self.writeLastError(error.localizedDescription)
-        self.emitPacketTunnelError(code: "manager-load-failed", message: error.localizedDescription)
+        let errorMessage = self.describeError(error)
+        self.writeLastError(errorMessage)
+        self.emitPacketTunnelError(code: "manager-load-failed", message: errorMessage)
         completion(.failure(error))
         return
       }
@@ -477,6 +480,31 @@ class DarwinHostApiImpl: DarwinHostApi {
     @unknown default:
       return "unknown"
     }
+  }
+
+  private func describeError(_ error: Error) -> String {
+    let nsError = error as NSError
+    var parts: [String] = []
+    parts.append("domain=\(nsError.domain)")
+    parts.append("code=\(nsError.code)")
+    let localized = nsError.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !localized.isEmpty {
+      parts.append("message=\(localized)")
+    }
+    if let reason = nsError.userInfo[NSLocalizedFailureReasonErrorKey] as? String,
+       !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      parts.append("reason=\(reason)")
+    }
+    if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+      parts.append("underlying=\(underlying.domain)(\(underlying.code)): \(underlying.localizedDescription)")
+    }
+    if (nsError.domain == "NEConfigurationErrorDomain" && nsError.code == 10) ||
+      (nsError.domain == "NEVPNErrorDomain" && nsError.code == 5)
+    {
+      parts.append("hint=Packet Tunnel extension signing/entitlements are invalid or missing")
+    }
+    return parts.joined(separator: ", ")
   }
 
   private func listUtunInterfaces() -> [String] {

@@ -388,7 +388,7 @@ private final class XrayTunnelBridge {
 }
 
 private final class PacketTunnelStatusStore {
-  private let defaults = UserDefaults(suiteName: "group.com.xstream") ?? .standard
+  private let defaults = UserDefaults(suiteName: "group.plus.svc.xstream") ?? .standard
   private let errorKey = "packet_tunnel_last_error"
   private let startedAtKey = "packet_tunnel_started_at"
 

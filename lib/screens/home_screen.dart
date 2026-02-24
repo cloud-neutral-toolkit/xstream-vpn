@@ -365,145 +365,124 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.explore, size: 20, color: Color(0xFF4A6572)),
+                  const Icon(Icons.dns_outlined, size: 20, color: Color(0xFF4A6572)),
                   const SizedBox(width: 8),
                   Text(
-                    context.l10n.get('selectedNode'),
+                    context.l10n.get('nodeList'),
                     style: const TextStyle(
                       color: Color(0xFF4A6572),
                       fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              if (_activeNode.isNotEmpty || _selectedNode.isNotEmpty)
+              if (vpnNodes.isEmpty)
                 Center(
-                  child: Text(
-                    _activeNode.isNotEmpty ? _activeNode : _selectedNode,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF222222),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.add_circle_outline_rounded,
+                          size: 36,
+                          color: Colors.grey.withValues(alpha: 0.45),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          context.l10n.get('addNodeHint'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.withValues(alpha: 0.7),
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 )
               else
-                Center(
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.add_circle_outline_rounded,
-                        size: 36,
-                        color: Colors.grey.withValues(alpha: 0.45),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        context.l10n.get('addNodeHint'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.withValues(alpha: 0.7),
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F7FA),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(
-                    Icons.recommend,
-                    size: 20,
-                    color: Color(0xFF4A6572),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    context.l10n.get('recommendedNode'),
-                    style: const TextStyle(
-                      color: Color(0xFF4A6572),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Center(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border:
-                        Border.all(color: Colors.grey.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 8,
-                        ),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFD2E0FB),
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(24),
-                            bottomLeft: Radius.circular(24),
+                SizedBox(
+                  height: 110,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: vpnNodes.length,
+                    itemBuilder: (context, index) {
+                      final node = vpnNodes[index];
+                      final isActive = _activeNode == node.name;
+                      final isSelected = _selectedNode == node.name;
+                      final latency = _latencyByNode[node.name];
+                      final isUnlocked = GlobalState.isUnlocked.value;
+                      
+                      return GestureDetector(
+                        onTap: (isUnlocked && !_isSwitchingNode)
+                            ? () => _selectNode(node)
+                            : null,
+                        child: Container(
+                          width: 160,
+                          margin: const EdgeInsets.only(right: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isActive 
+                                ? const Color(0xFFE8F5E9) 
+                                : (isSelected ? const Color(0xFFE3F2FD) : Colors.white),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isActive
+                                  ? Colors.green.withValues(alpha: 0.5)
+                                  : (isSelected ? Colors.blue.withValues(alpha: 0.5) : Colors.grey.withValues(alpha: 0.2)),
+                              width: (isActive || isSelected) ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      node.name,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: isActive ? Colors.green[800] : const Color(0xFF222222),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (isActive)
+                                    const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                                ],
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF5F7FA),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.speed, size: 12, color: Colors.grey),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      latency != null ? '${latency}ms' : '--',
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.check, size: 16),
-                            const SizedBox(width: 4),
-                            Text(context.l10n.get('speed')),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.speed, size: 16, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(
-                              context.l10n.get('latency'),
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
-              ),
-              const SizedBox(height: 32),
-              Center(
-                child: Text(
-                  _activeNode.isNotEmpty ? _activeNode : 'No nodes available',
-                  style: const TextStyle(
-                    color: Colors.grey,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
             ],
           ),
         ),

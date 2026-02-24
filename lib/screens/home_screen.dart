@@ -203,9 +203,9 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // ── Stop active node ──────────────────────────────────────────
       if (_activeNode == nodeName) {
-        final msg = useTunMode
-            ? await NativeBridge.stopNodeForTunnel()
-            : await NativeBridge.stopNodeService(nodeName);
+        // Prevent leaks if connection mode was changed during an active session by stopping both
+        await NativeBridge.stopNodeForTunnel();
+        final msg = await NativeBridge.stopNodeService(nodeName);
         if (!mounted) return;
         setState(() {
           _activeNode = '';
@@ -213,17 +213,14 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         GlobalState.activeNodeName.value = '';
         _syncConnectedMeta();
-        _showMessage(msg);
+        _showMessage(useTunMode ? 'Tunnel disconnected' : msg);
         return;
       }
 
       // ── Stop previous node if switching ───────────────────────────
       if (_activeNode.isNotEmpty) {
-        if (useTunMode) {
-          await NativeBridge.stopNodeForTunnel();
-        } else {
-          await NativeBridge.stopNodeService(_activeNode);
-        }
+        await NativeBridge.stopNodeForTunnel();
+        await NativeBridge.stopNodeService(_activeNode);
         if (!mounted) return;
         GlobalState.activeNodeName.value = '';
       }

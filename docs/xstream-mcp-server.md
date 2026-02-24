@@ -61,6 +61,10 @@ startup_timeout_sec = 30
 - `macos_app_paths`
 - `macos_tail_logs`
 - `macos_read_sync_artifacts`
+- `runtime_config_check`
+- `runtime_log_check`
+- `runtime_process_check`
+- `runtime_diagnose`
 - `auth_login`
 - `auth_mfa_verify`
 - `auth_sync_pull`
@@ -130,6 +134,13 @@ XSTREAM_MCP_DEBUG=true
 
 - `xstream-dev`：调试源码与构建流程（`flutter_*`、`xcode_*`、接口联调）
 - `xstream-runtime`：调试已安装 app 的真实运行态数据（配置/日志/同步）
+
+运行态 MCP 新增能力可直接用于 AI Agent 巡检：
+
+- 配置检查：`runtime_config_check`
+- 日志检查：`runtime_log_check`
+- 进程检查：`runtime_process_check`
+- 一键诊断：`runtime_diagnose`
 
 Makefile 快捷入口：
 

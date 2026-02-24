@@ -160,6 +160,97 @@ func main() {
 	)
 
 	s.AddTool(
+		mcp.NewTool("runtime_config_check",
+			mcp.WithDescription("Check Xray runtime config.json structure and key fields."),
+			mcp.WithString("config_path", mcp.Description("Override config path. Defaults to runtime config path.")),
+		),
+		func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			configPath := strings.TrimSpace(req.GetString("config_path", ""))
+			res, err := checkRuntimeConfig(absRoot, configPath)
+			if err != nil {
+				return jsonResult(map[string]any{"ok": false, "error": err.Error()}, true)
+			}
+			return jsonResult(res, false)
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("runtime_log_check",
+			mcp.WithDescription("Check Xray runtime log tail and summarize warning/error signals."),
+			mcp.WithString("log_path", mcp.Description("Override runtime log path. Defaults to runtime log path.")),
+			mcp.WithNumber("lines", mcp.Description("Tail line count, default 200")),
+			mcp.WithString("grep", mcp.Description("Case-insensitive substring filter for returned lines.")),
+		),
+		func(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			logPath := strings.TrimSpace(req.GetString("log_path", ""))
+			lines := req.GetInt("lines", 200)
+			if lines <= 0 {
+				lines = 200
+			}
+			grep := strings.TrimSpace(req.GetString("grep", ""))
+			res, err := checkRuntimeLog(absRoot, logPath, lines, grep)
+			if err != nil {
+				return jsonResult(map[string]any{"ok": false, "error": err.Error()}, true)
+			}
+			return jsonResult(res, false)
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("runtime_process_check",
+			mcp.WithDescription("Check whether Xray runtime process is running and return process list matches."),
+			mcp.WithString("executable", mcp.Description("Override executable path. Defaults to runtime executable path.")),
+			mcp.WithString("config_path", mcp.Description("Optional config path filter. Defaults to runtime config path.")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			executable := strings.TrimSpace(req.GetString("executable", ""))
+			configPath := strings.TrimSpace(req.GetString("config_path", ""))
+			res, err := checkRuntimeProcess(ctx, absRoot, executable, configPath)
+			if err != nil {
+				return jsonResult(map[string]any{"ok": false, "error": err.Error()}, true)
+			}
+			return jsonResult(res, false)
+		},
+	)
+
+	s.AddTool(
+		mcp.NewTool("runtime_diagnose",
+			mcp.WithDescription("Run config/log/process checks for Xray runtime in one call."),
+			mcp.WithNumber("lines", mcp.Description("Log tail line count, default 200")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			lines := req.GetInt("lines", 200)
+			if lines <= 0 {
+				lines = 200
+			}
+			paths, err := discoverRuntimePaths(absRoot)
+			if err != nil {
+				return jsonResult(map[string]any{"ok": false, "error": err.Error()}, true)
+			}
+			configRes, configErr := checkRuntimeConfig(absRoot, paths["runtime_config"])
+			logRes, logErr := checkRuntimeLog(absRoot, paths["runtime_log"], lines, "")
+			processRes, processErr := checkRuntimeProcess(ctx, absRoot, paths["executable"], paths["runtime_config"])
+			res := map[string]any{
+				"ok":            configErr == nil && logErr == nil && processErr == nil,
+				"paths":         paths,
+				"config_check":  configRes,
+				"log_check":     logRes,
+				"process_check": processRes,
+			}
+			if configErr != nil {
+				res["config_error"] = configErr.Error()
+			}
+			if logErr != nil {
+				res["log_error"] = logErr.Error()
+			}
+			if processErr != nil {
+				res["process_error"] = processErr.Error()
+			}
+			return jsonResult(res, configErr != nil || logErr != nil || processErr != nil)
+		},
+	)
+
+	s.AddTool(
 		mcp.NewTool("auth_login",
 			mcp.WithDescription("Call accounts login endpoint and cache token/cookie for sync debugging."),
 			mcp.WithString("username", mcp.Description("Account username")),
@@ -515,12 +606,295 @@ func discoverMacOSPaths(root string) map[string]any {
 		"existing":    existing,
 		"active_base": active,
 		"active_paths": map[string]string{
-			"vpn_nodes":   filepath.Join(active, "vpn_nodes.json"),
-			"sync_config": filepath.Join(active, "configs", "desktop_sync.json"),
-			"logs_dir":    filepath.Join(active, "logs"),
-			"configs_dir": filepath.Join(active, "configs"),
+			"vpn_nodes":       filepath.Join(active, "vpn_nodes.json"),
+			"sync_config":     filepath.Join(active, "configs", "desktop_sync.json"),
+			"logs_dir":        filepath.Join(active, "logs"),
+			"configs_dir":     filepath.Join(active, "configs"),
+			"runtime_config":  filepath.Join(active, "configs", "config.json"),
+			"runtime_log":     filepath.Join(active, "logs", "xray-runtime.log"),
+			"runtime_bin_dir": filepath.Join(active, "bin"),
+			"runtime_xray":    filepath.Join(active, "bin", "xray"),
 		},
 	}
+}
+
+func discoverRuntimePaths(root string) (map[string]string, error) {
+	paths := discoverMacOSPaths(root)
+	active, _ := paths["active_base"].(string)
+	if strings.TrimSpace(active) == "" {
+		return nil, fmt.Errorf("no active macOS app path detected")
+	}
+	return map[string]string{
+		"base_dir":       active,
+		"executable":     filepath.Join(active, "bin", "xray"),
+		"runtime_config": filepath.Join(active, "configs", "config.json"),
+		"runtime_log":    filepath.Join(active, "logs", "xray-runtime.log"),
+	}, nil
+}
+
+func checkRuntimeConfig(root, overridePath string) (map[string]any, error) {
+	paths, err := discoverRuntimePaths(root)
+	if err != nil {
+		return nil, err
+	}
+	configPath := strings.TrimSpace(overridePath)
+	if configPath == "" {
+		configPath = paths["runtime_config"]
+	}
+	st, err := os.Stat(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("runtime config not found: %s", configPath)
+	}
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	var parsed any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return map[string]any{
+			"ok":          false,
+			"config_path": configPath,
+			"size":        st.Size(),
+			"modified":    st.ModTime().Format(time.RFC3339),
+			"json_valid":  false,
+			"error":       err.Error(),
+		}, nil
+	}
+
+	summary, warnings := summarizeRuntimeConfig(parsed)
+	return map[string]any{
+		"ok":          true,
+		"config_path": configPath,
+		"size":        st.Size(),
+		"modified":    st.ModTime().Format(time.RFC3339),
+		"json_valid":  true,
+		"summary":     summary,
+		"warnings":    warnings,
+	}, nil
+}
+
+func summarizeRuntimeConfig(parsed any) (map[string]any, []string) {
+	doc, ok := parsed.(map[string]any)
+	if !ok {
+		return map[string]any{
+			"root_type": fmt.Sprintf("%T", parsed),
+		}, []string{"config root is not a JSON object"}
+	}
+
+	warnings := make([]string, 0)
+	summary := map[string]any{}
+
+	if logCfg, ok := doc["log"].(map[string]any); ok {
+		summary["loglevel"] = firstStringValue(logCfg, "loglevel", "level")
+	}
+
+	if dnsCfg, ok := doc["dns"].(map[string]any); ok {
+		if servers, ok := dnsCfg["servers"].([]any); ok {
+			summary["dns_server_count"] = len(servers)
+		}
+	}
+
+	inboundCount := 0
+	tunCount := 0
+	if inbounds, ok := doc["inbounds"].([]any); ok {
+		inboundCount = len(inbounds)
+		for i, inboundRaw := range inbounds {
+			inbound, ok := inboundRaw.(map[string]any)
+			if !ok {
+				continue
+			}
+			protocol, _ := inbound["protocol"].(string)
+			if protocol != "tun" {
+				continue
+			}
+			tunCount++
+			settings, _ := inbound["settings"].(map[string]any)
+			if settings == nil {
+				continue
+			}
+			for _, key := range []string{"interfaceName", "name", "interface"} {
+				value, exists := settings[key]
+				if !exists {
+					continue
+				}
+				name, ok := value.(string)
+				if !ok || !regexp.MustCompile(`^utun\d+$`).MatchString(name) {
+					warnings = append(warnings, fmt.Sprintf("inbounds[%d].settings.%s is not utunN (%v)", i, key, value))
+				}
+			}
+		}
+	}
+	summary["inbound_count"] = inboundCount
+	summary["tun_inbound_count"] = tunCount
+
+	if outbounds, ok := doc["outbounds"].([]any); ok {
+		summary["outbound_count"] = len(outbounds)
+	}
+
+	return summary, warnings
+}
+
+func firstStringValue(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		v, ok := m[key]
+		if !ok {
+			continue
+		}
+		s, ok := v.(string)
+		if ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return ""
+}
+
+func checkRuntimeLog(root, overridePath string, lines int, grep string) (map[string]any, error) {
+	paths, err := discoverRuntimePaths(root)
+	if err != nil {
+		return nil, err
+	}
+	logPath := strings.TrimSpace(overridePath)
+	if logPath == "" {
+		logPath = paths["runtime_log"]
+	}
+	st, err := os.Stat(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("runtime log not found: %s", logPath)
+	}
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		return nil, err
+	}
+	allLines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	tail := allLines
+	if lines < len(allLines) {
+		tail = allLines[len(allLines)-lines:]
+	}
+	filtered := tail
+	if strings.TrimSpace(grep) != "" {
+		g := strings.ToLower(strings.TrimSpace(grep))
+		filtered = make([]string, 0, len(tail))
+		for _, line := range tail {
+			if strings.Contains(strings.ToLower(line), g) {
+				filtered = append(filtered, line)
+			}
+		}
+	}
+
+	errorCount := 0
+	warnCount := 0
+	infoCount := 0
+	samples := make([]string, 0, 20)
+	for _, line := range tail {
+		lower := strings.ToLower(line)
+		switch {
+		case strings.Contains(lower, "[error]") || strings.Contains(lower, " error "):
+			errorCount++
+		case strings.Contains(lower, "[warning]") || strings.Contains(lower, " warning "):
+			warnCount++
+		case strings.Contains(lower, "[info]") || strings.Contains(lower, " info "):
+			infoCount++
+		}
+		if strings.Contains(lower, "failed") || strings.Contains(lower, "panic") {
+			if len(samples) < 20 {
+				samples = append(samples, line)
+			}
+		}
+	}
+
+	return map[string]any{
+		"ok":         true,
+		"log_path":   logPath,
+		"size":       st.Size(),
+		"modified":   st.ModTime().Format(time.RFC3339),
+		"line_count": len(allLines),
+		"tail_lines": len(tail),
+		"grep":       grep,
+		"matched":    len(filtered),
+		"level_count": map[string]int{
+			"error": errorCount,
+			"warn":  warnCount,
+			"info":  infoCount,
+		},
+		"failure_samples": samples,
+		"tail":            strings.Join(filtered, "\n"),
+	}, nil
+}
+
+func checkRuntimeProcess(ctx context.Context, root, overrideExe, overrideConfig string) (map[string]any, error) {
+	paths, err := discoverRuntimePaths(root)
+	if err != nil {
+		return nil, err
+	}
+	executable := strings.TrimSpace(overrideExe)
+	if executable == "" {
+		executable = paths["executable"]
+	}
+	configPath := strings.TrimSpace(overrideConfig)
+	if configPath == "" {
+		configPath = paths["runtime_config"]
+	}
+
+	psRes := runCommand(ctx, "/", "ps", "-axo", "pid,ppid,etime,command")
+	if !psRes.OK {
+		return map[string]any{
+			"ok":      false,
+			"command": psRes.Command,
+			"stderr":  psRes.Stderr,
+		}, nil
+	}
+
+	lines := strings.Split(strings.ReplaceAll(psRes.Stdout, "\r\n", "\n"), "\n")
+	matches := make([]map[string]any, 0)
+	exeBase := filepath.Base(executable)
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(strings.ToLower(trimmed), "pid ") {
+			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) < 4 {
+			continue
+		}
+		pid := fields[0]
+		ppid := fields[1]
+		etime := fields[2]
+		command := strings.Join(fields[3:], " ")
+		lowerCmd := strings.ToLower(command)
+
+		matchedByExe := strings.Contains(command, executable) ||
+			strings.Contains(lowerCmd, "/"+strings.ToLower(exeBase)+" ") ||
+			strings.Contains(lowerCmd, " "+strings.ToLower(exeBase)+" ")
+		if !matchedByExe {
+			continue
+		}
+		matchedByConfig := configPath == "" || strings.Contains(command, configPath)
+		matches = append(matches, map[string]any{
+			"pid":          pid,
+			"ppid":         ppid,
+			"etime":        etime,
+			"command":      command,
+			"match_config": matchedByConfig,
+		})
+	}
+
+	configMatches := 0
+	for _, item := range matches {
+		if v, ok := item["match_config"].(bool); ok && v {
+			configMatches++
+		}
+	}
+
+	return map[string]any{
+		"ok":                    true,
+		"executable":            executable,
+		"config_path":           configPath,
+		"running":               len(matches) > 0,
+		"process_count":         len(matches),
+		"config_match_count":    configMatches,
+		"processes":             matches,
+		"process_query_command": psRes.Command,
+	}, nil
 }
 
 func readSyncArtifacts(root string) (map[string]any, error) {

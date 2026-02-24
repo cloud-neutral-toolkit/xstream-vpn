@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../../services/vpn_config_service.dart';
 import '../../utils/global_config.dart';
+import '../../utils/tun_config_guard.dart';
 
 class XrayConfigWriter {
   static const _defaultNodeName = 'Desktop Sync';
@@ -14,7 +15,8 @@ class XrayConfigWriter {
     final path = await GlobalApplicationConfig.getXrayConfigFilePath(fileName);
     final file = File(path);
     await file.create(recursive: true);
-    await file.writeAsString(json);
+    final guarded = guardTunInterfaceFieldsForWrite(json);
+    await file.writeAsString(guarded.json);
     return path;
   }
 
@@ -30,7 +32,8 @@ class XrayConfigWriter {
     final path = await GlobalApplicationConfig.getXrayConfigFilePath(fileName);
     final file = File(path);
     await file.create(recursive: true);
-    await file.writeAsString(json);
+    final guarded = guardTunInterfaceFieldsForWrite(json);
+    await file.writeAsString(guarded.json);
     return path;
   }
 

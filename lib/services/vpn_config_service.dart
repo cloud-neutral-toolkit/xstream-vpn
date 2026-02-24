@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../utils/global_config.dart';
 import '../utils/native_bridge.dart';
+import '../utils/tun_config_guard.dart';
 import '../utils/validators.dart';
 import '../templates/xray_config_template.dart';
 import '../templates/xray_service_macos_template.dart';
@@ -320,7 +321,7 @@ class VpnConfig {
     final prefix = await GlobalApplicationConfig.getXrayConfigPath();
     final xrayConfigPath = '${prefix}node-$code-config.json';
 
-    final xrayConfigContent = await _generateXrayJsonConfig(
+    final generatedXrayConfigContent = await _generateXrayJsonConfig(
       domain,
       port,
       uuid,
@@ -340,7 +341,14 @@ class VpnConfig {
       enableHttpProxy: enableHttpProxy,
       enableTunnelMode: enableTunnelMode,
     );
-    if (xrayConfigContent.isEmpty) return;
+    if (generatedXrayConfigContent.isEmpty) return;
+    final guarded = guardTunInterfaceFieldsForWrite(generatedXrayConfigContent);
+    final xrayConfigContent = guarded.json;
+    if (guarded.removedFields > 0) {
+      logMessage(
+        '⚠️ Removed ${guarded.removedFields} invalid tun interface field(s) before writing config.json',
+      );
+    }
 
     final serviceName = await GlobalApplicationConfig.serviceNameForRegion(
       code,

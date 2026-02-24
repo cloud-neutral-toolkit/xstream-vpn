@@ -23,6 +23,20 @@ var procMap sync.Map
 var instMu sync.Mutex
 var tunnelSeq atomic.Int64
 var tunnelSession sync.Map
+var tunnelLastError atomic.Value
+
+func setTunnelLastError(msg string) {
+	tunnelLastError.Store(msg)
+}
+
+func getTunnelLastError() string {
+	if value := tunnelLastError.Load(); value != nil {
+		if text, ok := value.(string); ok {
+			return text
+		}
+	}
+	return ""
+}
 
 func injectSockoptInterface(cfgData []byte, iface string) []byte {
 	if iface == "" {
@@ -196,6 +210,12 @@ func StartXrayTunnelWithFd(configC *C.char, fd C.int, interfaceC *C.char) C.long
 	defer instMu.Unlock()
 
 	if xray.GetXrayState() {
+		setTunnelLastError("xray already running")
+		return C.longlong(-1)
+	}
+
+	if int(fd) < 0 {
+		setTunnelLastError("invalid tun fd")
 		return C.longlong(-1)
 	}
 
@@ -211,12 +231,19 @@ func StartXrayTunnelWithFd(configC *C.char, fd C.int, interfaceC *C.char) C.long
 	}
 
 	if err := startXrayInternal(cfgData); err != nil {
+		setTunnelLastError(err.Error())
 		return C.longlong(-1)
 	}
 
+	setTunnelLastError("")
 	handle := tunnelSeq.Add(1)
 	tunnelSession.Store(handle, true)
 	return C.longlong(handle)
+}
+
+//export GetLastXrayTunnelError
+func GetLastXrayTunnelError() *C.char {
+	return C.CString(getTunnelLastError())
 }
 
 //export StopXrayTunnel

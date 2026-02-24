@@ -22,7 +22,8 @@ int32_t IsXrayDownloading(void);
 char* StartXray(const char* config);
 char* StopXray(void);
 long long StartXrayTunnel(const char* config);
-long long StartXrayTunnelWithFd(const char* config, int32_t tunFd);
+long long StartXrayTunnelWithFd(const char* config, int32_t tunFd, const char* interfaceName);
+char* GetLastXrayTunnelError(void);
 int32_t SubmitInboundPacket(long long handle,
                             const uint8_t* data,
                             int32_t length,

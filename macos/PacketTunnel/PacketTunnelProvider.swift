@@ -288,6 +288,13 @@ private final class XrayTunnelEngine: SecureTunnelEngine {
         userInfo: [NSLocalizedDescriptionKey: "Missing Xray config for Packet Tunnel"]
       )
     }
+    guard fd >= 0 else {
+      throw NSError(
+        domain: "Xstream.PacketTunnel",
+        code: -13,
+        userInfo: [NSLocalizedDescriptionKey: "Invalid Packet Tunnel fd: \(fd)"]
+      )
+    }
 
     let handle = try bridge.start(configData: config, fd: fd, egressInterface: egressInterface)
     tunnelHandle = handle
@@ -307,11 +314,13 @@ private final class XrayTunnelBridge {
   private typealias StopXrayTunnelFn = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
   private typealias FreeXrayTunnelFn = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
   private typealias FreeCStringFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
+  private typealias GetLastXrayTunnelErrorFn = @convention(c) () -> UnsafeMutablePointer<CChar>?
 
   private let startFn: StartXrayTunnelWithFdFn?
   private let stopFn: StopXrayTunnelFn?
   private let freeTunnelFn: FreeXrayTunnelFn?
   private let freeCStringFn: FreeCStringFn?
+  private let getLastErrorFn: GetLastXrayTunnelErrorFn?
   private let dlHandle: UnsafeMutableRawPointer?
   private let loadError: String?
 
@@ -323,6 +332,7 @@ private final class XrayTunnelBridge {
     stopFn = XrayTunnelBridge.loadSymbol("StopXrayTunnel", from: dlHandle)
     freeTunnelFn = XrayTunnelBridge.loadSymbol("FreeXrayTunnel", from: dlHandle)
     freeCStringFn = XrayTunnelBridge.loadSymbol("FreeCString", from: dlHandle)
+    getLastErrorFn = XrayTunnelBridge.loadSymbol("GetLastXrayTunnelError", from: dlHandle)
   }
 
   deinit {
@@ -345,10 +355,12 @@ private final class XrayTunnelBridge {
       return try egressInterface.withCString { ifaceCstr in
         let handle = startFn(cstr, fd, ifaceCstr)
         if handle <= 0 {
+          let bridgeError = readBridgeError()
+          let summary = summarizeConfig(configData)
           throw NSError(
             domain: "Xstream.PacketTunnel",
             code: -12,
-            userInfo: [NSLocalizedDescriptionKey: "StartXrayTunnelWithFd returned invalid handle"]
+            userInfo: [NSLocalizedDescriptionKey: "StartXrayTunnelWithFd returned invalid handle (fd=\(fd), egress=\(egressInterface), bridgeError=\(bridgeError), \(summary))"]
           )
         }
         return handle
@@ -381,6 +393,44 @@ private final class XrayTunnelBridge {
     } else {
       Darwin.free(ptr)
     }
+  }
+
+  private func readBridgeError() -> String {
+    guard let getLastErrorFn else {
+      return "GetLastXrayTunnelError unavailable"
+    }
+    let ptr = getLastErrorFn()
+    defer { releaseCString(ptr) }
+    guard let ptr else {
+      return "empty"
+    }
+    let value = String(cString: ptr).trimmingCharacters(in: .whitespacesAndNewlines)
+    return value.isEmpty ? "empty" : value
+  }
+
+  private func summarizeConfig(_ data: Data) -> String {
+    guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return "configBytes=\(data.count), json=invalid"
+    }
+    guard let inbounds = root["inbounds"] as? [[String: Any]] else {
+      return "configBytes=\(data.count), inbounds=0"
+    }
+    var tunSummaries: [String] = []
+    for inbound in inbounds {
+      guard let proto = inbound["protocol"] as? String, proto == "tun" else { continue }
+      guard let settings = inbound["settings"] as? [String: Any] else {
+        tunSummaries.append("tun(no-settings)")
+        continue
+      }
+      let ifaceName = settings["interfaceName"] as? String ?? "nil"
+      let name = settings["name"] as? String ?? "nil"
+      let iface = settings["interface"] as? String ?? "nil"
+      tunSummaries.append("tun(interfaceName=\(ifaceName),name=\(name),interface=\(iface))")
+    }
+    if tunSummaries.isEmpty {
+      return "configBytes=\(data.count), tunInbounds=0"
+    }
+    return "configBytes=\(data.count), \(tunSummaries.joined(separator: ";"))"
   }
 
   private static func loadSymbol<T>(_ name: String, from handle: UnsafeMutableRawPointer?) -> T? {

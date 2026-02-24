@@ -8,6 +8,8 @@
   <string>PacketTunnel</string>
   <key>CFBundleDisplayName</key>
   <string>Xstream Packet Tunnel</string>
+  <key>CFBundleExecutable</key>
+  <string>$(EXECUTABLE_NAME)</string>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionPointIdentifier</key>

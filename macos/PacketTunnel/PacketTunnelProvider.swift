@@ -3,6 +3,9 @@ import Network
 import NetworkExtension
 import Darwin
 import ObjectiveC.runtime
+import os.log
+
+let tunnelLog = OSLog(subsystem: "plus.svc.xstream", category: "PacketTunnel")
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var activeSettings: NEPacketTunnelNetworkSettings?
@@ -14,6 +17,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
   ) {
+    os_log("PacketTunnelProvider: starting tunnel", log: tunnelLog, type: .info)
     do {
       let map = try resolveOptions(options: options)
       let enableIPv6 = shouldEnableIPv6(options: map, launchOptions: options)
@@ -26,6 +30,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         if let error {
+          os_log("PacketTunnelProvider: setTunnelNetworkSettings failed: %{public}@", log: tunnelLog, type: .error, error.localizedDescription)
           self.statusStore.markFailed(error.localizedDescription)
           completionHandler(error)
           return
@@ -42,18 +47,22 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           let configData = self.sanitizeConfigForDarwinTun(self.resolveConfigData(options: map))
           try self.engine.start(config: configData, fd: fd, fdDetail: resolvedFd.detail, egressInterface: egressInterface)
           self.statusStore.markConnected()
+          os_log("PacketTunnelProvider: Engine started successfully", log: tunnelLog, type: .info)
           completionHandler(nil)
         } catch {
+          os_log("PacketTunnelProvider: Engine failed to start: %{public}@", log: tunnelLog, type: .error, error.localizedDescription)
           self.rollbackStartFailure(error: error, completionHandler: completionHandler)
         }
       }
     } catch {
+      os_log("PacketTunnelProvider: startTunnel exception: %{public}@", log: tunnelLog, type: .error, error.localizedDescription)
       statusStore.markFailed(error.localizedDescription)
       completionHandler(error)
     }
   }
 
   override func stopTunnel(with _: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+    os_log("PacketTunnelProvider: stopping tunnel", log: tunnelLog, type: .info)
     monitor.cancel()
     engine.stop()
     statusStore.markDisconnected()

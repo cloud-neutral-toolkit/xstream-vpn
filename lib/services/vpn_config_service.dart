@@ -554,7 +554,7 @@ class VpnConfig {
     checkNotNull(logMessage, 'logMessage');
 
     // Generate inbounds configuration based on proxy and tunnel settings
-    final inboundsConfig = _generateInboundsConfig(
+    final inboundsConfig = generateInboundsConfig(
       enableSocksProxy: enableSocksProxy,
       enableHttpProxy: enableHttpProxy,
       enableTunnelMode: enableTunnelMode,
@@ -797,7 +797,7 @@ class VpnConfig {
   }
 
   /// Generate inbounds configuration based on proxy and tunnel settings
-  static String _generateInboundsConfig({
+  static String generateInboundsConfig({
     bool enableSocksProxy = true,
     bool enableHttpProxy = true,
     bool enableTunnelMode = true,

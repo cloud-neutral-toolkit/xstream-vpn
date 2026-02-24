@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ffi' as ffi;
 import 'package:flutter/services.dart';
@@ -165,8 +166,10 @@ class NativeBridge {
       VpnConfig.updateNode(node);
       await VpnConfig.saveToFile();
     }
-    final runtimeConfigPath =
-        await _prepareCanonicalTunnelConfigPath(sourceConfigPath);
+    final runtimeConfigPath = await _prepareCanonicalTunnelConfigPath(
+      sourceConfigPath,
+      isTunMode: true,
+    );
 
     // ── iOS: FFI → startXray(configJson) ────────────────────────────
     if (Platform.isIOS) {
@@ -334,8 +337,10 @@ class NativeBridge {
       VpnConfig.updateNode(node);
       await VpnConfig.saveToFile();
     }
-    final runtimeConfigPath =
-        await _prepareCanonicalTunnelConfigPath(sourceConfigPath);
+    final runtimeConfigPath = await _prepareCanonicalTunnelConfigPath(
+      sourceConfigPath,
+      isTunMode: false,
+    );
 
     if (_isMobile) {
       if (Platform.isAndroid) {
@@ -756,8 +761,9 @@ class NativeBridge {
   }
 
   static Future<String> _prepareCanonicalTunnelConfigPath(
-    String sourcePath,
-  ) async {
+    String sourcePath, {
+    required bool isTunMode,
+  }) async {
     final normalized = sourcePath.trim();
     if (normalized.isEmpty) return sourcePath;
     final sourceFile = File(normalized);
@@ -765,24 +771,36 @@ class NativeBridge {
 
     final configsPath = await GlobalApplicationConfig.getConfigsPath();
     final canonicalPath = '$configsPath/config.json';
-    if (canonicalPath == normalized) {
-      return normalized;
-    }
 
     try {
-      final linkType = await FileSystemEntity.type(
-        canonicalPath,
-        followLinks: false,
+      final sourceJsonStr = await sourceFile.readAsString();
+      final sourceJson = jsonDecode(sourceJsonStr) as Map<String, dynamic>;
+
+      final newInboundsStr = VpnConfig.generateInboundsConfig(
+        enableSocksProxy: true,
+        enableHttpProxy: true,
+        enableTunnelMode: isTunMode,
       );
-      if (linkType == FileSystemEntityType.link) {
-        await Link(canonicalPath).delete();
-      } else if (linkType == FileSystemEntityType.file) {
-        await File(canonicalPath).delete();
-      } else if (linkType == FileSystemEntityType.directory) {
-        await Directory(canonicalPath).delete(recursive: true);
-      }
-      // 动态复制源文件，避免使用软链接导致 'too many levels of symbolic links'
-      await File(normalized).copy(canonicalPath);
+      sourceJson['inbounds'] = jsonDecode(newInboundsStr);
+
+      final updatedJsonStr =
+          const JsonEncoder.withIndent('  ').convert(sourceJson);
+
+      try {
+        final linkType = await FileSystemEntity.type(
+          canonicalPath,
+          followLinks: false,
+        );
+        if (linkType == FileSystemEntityType.link) {
+          await Link(canonicalPath).delete();
+        } else if (linkType == FileSystemEntityType.file) {
+          await File(canonicalPath).delete();
+        } else if (linkType == FileSystemEntityType.directory) {
+          await Directory(canonicalPath).delete(recursive: true);
+        }
+      } catch (_) {}
+
+      await File(canonicalPath).writeAsString(updatedJsonStr);
       return canonicalPath;
     } catch (_) {
       return normalized;
@@ -859,8 +877,10 @@ class NativeBridge {
         if (configPath == null) {
           return '未找到可用的节点配置';
         }
-        final canonicalPath =
-            await _prepareCanonicalTunnelConfigPath(configPath);
+        final canonicalPath = await _prepareCanonicalTunnelConfigPath(
+          configPath,
+          isTunMode: true,
+        );
         stopXray();
         _mobileActiveNodeName = null;
         final profile = await _buildDefaultTunnelProfileMap(
@@ -886,7 +906,10 @@ class NativeBridge {
       if (configPath == null) {
         return '未找到可用的节点配置';
       }
-      final canonicalPath = await _prepareCanonicalTunnelConfigPath(configPath);
+      final canonicalPath = await _prepareCanonicalTunnelConfigPath(
+        configPath,
+        isTunMode: true,
+      );
       final profile = await _buildDefaultTunnelProfile(
         configPath: canonicalPath,
       );

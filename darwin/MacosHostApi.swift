@@ -233,21 +233,31 @@ class DarwinHostApiImpl: DarwinHostApi {
     }
   }
 
-  func getPacketTunnelStatus() throws -> TunnelStatus {
-    let manager = try loadTunnelManagerSync()
-    let state: String
-    if let manager {
-      state = mapStatus(manager.connection.status)
-    } else {
-      state = "not_configured"
-    }
+  func getPacketTunnelStatus(completion: @escaping (Result<TunnelStatus, Error>) -> Void) {
+    loadTunnelManager { manager, error in
+      if let error {
+        completion(.failure(error))
+        return
+      }
 
-    return TunnelStatus(
-      state: state,
-      lastError: readLastError(),
-      utunInterfaces: listUtunInterfaces(),
-      startedAt: readStartedAt()
-    )
+      let state: String
+      if let manager {
+        state = self.mapStatus(manager.connection.status)
+      } else {
+        state = "not_configured"
+      }
+
+      completion(
+        .success(
+          TunnelStatus(
+            state: state,
+            lastError: self.readLastError(),
+            utunInterfaces: self.listUtunInterfaces(),
+            startedAt: self.readStartedAt()
+          )
+        )
+      )
+    }
   }
 
   private func sharedDefaults() -> UserDefaults {
@@ -442,28 +452,6 @@ class DarwinHostApiImpl: DarwinHostApi {
     }
   }
 
-  private func loadTunnelManagerSync(timeoutSeconds: TimeInterval = 3.0) throws -> NETunnelProviderManager? {
-    var outputManager: NETunnelProviderManager?
-    var outputError: Error?
-    let semaphore = DispatchSemaphore(value: 0)
-
-    loadTunnelManager { manager, error in
-      outputManager = manager
-      outputError = error
-      semaphore.signal()
-    }
-
-    if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
-      throw PigeonError(code: "manager-timeout", message: "Timed out while loading Packet Tunnel manager", details: nil)
-    }
-
-    if let outputError {
-      throw outputError
-    }
-
-    return outputManager
-  }
-
   private func mapStatus(_ status: NEVPNStatus) -> String {
     switch status {
     case .connected:
@@ -570,12 +558,13 @@ class DarwinHostApiImpl: DarwinHostApi {
       return
     }
 
-    guard let status = try? getPacketTunnelStatus() else {
-      return
-    }
-
-    DispatchQueue.main.async {
-      flutterApi.onPacketTunnelStateChanged(status: status, completion: { _ in })
+    getPacketTunnelStatus { result in
+      guard case let .success(status) = result else {
+        return
+      }
+      DispatchQueue.main.async {
+        flutterApi.onPacketTunnelStateChanged(status: status, completion: { _ in })
+      }
     }
   }
 

@@ -98,6 +98,7 @@ abstract class DarwinHostApi {
   @async
   void stopPacketTunnel();
 
+  @async
   TunnelStatus getPacketTunnelStatus();
 }
 

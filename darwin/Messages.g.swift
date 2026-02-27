@@ -366,7 +366,7 @@ protocol DarwinHostApi {
   func savePacketTunnelProfile(profile: TunnelProfile) throws -> String
   func startPacketTunnel(completion: @escaping (Result<Void, Error>) -> Void)
   func stopPacketTunnel(completion: @escaping (Result<Void, Error>) -> Void)
-  func getPacketTunnelStatus() throws -> TunnelStatus
+  func getPacketTunnelStatus(completion: @escaping (Result<TunnelStatus, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -496,11 +496,13 @@ class DarwinHostApiSetup {
     let getPacketTunnelStatusChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.xstream.DarwinHostApi.getPacketTunnelStatus\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       getPacketTunnelStatusChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.getPacketTunnelStatus()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.getPacketTunnelStatus { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

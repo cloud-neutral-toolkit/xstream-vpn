@@ -968,8 +968,16 @@ class NativeBridge {
         startedAt: status.startedAt,
       );
     } on MissingPluginException {
+      addAppLog(
+        'Packet Tunnel status query unavailable: DarwinHostApi channel missing',
+        level: LogLevel.error,
+      );
       return _tunStatusFallback;
-    } catch (_) {
+    } catch (e) {
+      addAppLog(
+        'Packet Tunnel status query failed: $e',
+        level: LogLevel.error,
+      );
       return _tunStatusFallback;
     }
   }

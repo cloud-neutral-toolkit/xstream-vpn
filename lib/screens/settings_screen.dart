@@ -426,6 +426,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _onImportConfig() async {
+    final requiresUnlock = !Platform.isIOS;
     final controller = TextEditingController();
     final input = await showDialog<String>(
       context: context,
@@ -456,12 +457,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     addAppLog('开始导入配置...');
     try {
       if (input.startsWith('vless://')) {
-        if (!GlobalState.isUnlocked.value) {
+        if (requiresUnlock && !GlobalState.isUnlocked.value) {
           addAppLog('请先解锁再导入 VLESS 配置', level: LogLevel.warning);
           return;
         }
         final password = GlobalState.sudoPassword.value;
-        if (password.isEmpty) {
+        if (requiresUnlock && password.isEmpty) {
           addAppLog('无法获取 sudo 密码', level: LogLevel.error);
           return;
         }
@@ -884,12 +885,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: ValueListenableBuilder<bool>(
                 valueListenable: GlobalState.isUnlocked,
                 builder: (context, isUnlocked, _) {
+                  final allowSensitiveActions = Platform.isIOS || isUnlocked;
                   return Column(
                     children: [
                       ListTile(
                         leading: const Icon(Icons.sync),
                         title: Text(context.l10n.get('syncConfig')),
-                        onTap: isUnlocked ? _onSyncConfig : null,
+                        onTap: allowSensitiveActions ? _onSyncConfig : null,
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       ListTile(
@@ -909,7 +911,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.delete_forever, color: Colors.red[400]),
                         title: Text(context.l10n.get('deleteConfig'),
                             style: TextStyle(color: Colors.red[400])),
-                        onTap: isUnlocked ? _onDeleteConfig : null,
+                        onTap: allowSensitiveActions ? _onDeleteConfig : null,
                       ),
                     ],
                   );
@@ -944,27 +946,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: GlobalState.tunnelProxyEnabled,
-                    builder: (context, enabled, _) {
-                      return SwitchListTile(
-                        value: enabled,
-                        onChanged: (value) {
-                          setState(() {
-                            GlobalState.setTunnelModeEnabled(value);
-                          });
-                          addAppLog('系统级网络隧道: ${value ? "开启" : "关闭"}');
-                          _refreshTunStatus();
-                        },
-                        title:
-                            const Text('隧道模式', style: TextStyle(fontSize: 16)),
-                        subtitle: const Text(
-                          '启用系统级网络隧道',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      );
-                    },
-                  ),
+                  if (!Platform.isIOS)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: GlobalState.tunnelProxyEnabled,
+                      builder: (context, enabled, _) {
+                        return SwitchListTile(
+                          value: enabled,
+                          onChanged: (value) {
+                            setState(() {
+                              GlobalState.setTunnelModeEnabled(value);
+                            });
+                            addAppLog('系统级网络隧道: ${value ? "开启" : "关闭"}');
+                            _refreshTunStatus();
+                          },
+                          title: const Text('隧道模式',
+                              style: TextStyle(fontSize: 16)),
+                          subtitle: const Text(
+                            '启用系统级网络隧道',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        );
+                      },
+                    )
+                  else
+                    const ListTile(
+                      leading: Icon(Icons.vpn_lock),
+                      title: Text('Packet Tunnel'),
+                      subtitle: Text('iOS 默认使用系统级 Packet Tunnel'),
+                    ),
                 ],
               ),
             ),

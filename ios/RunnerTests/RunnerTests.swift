@@ -90,25 +90,29 @@ final class RunnerTests: XCTestCase {
             "settings": {
               "vnext": [
                 {
-                  "address": "example.com",
+                  "address": "57.183.19.25",
                   "port": 443,
                   "users": [
                     {
-                      "id": "11111111-1111-1111-1111-111111111111",
-                      "encryption": "none",
-                      "flow": "xtls-rprx-vision"
+                      "id": "18d270a9-533d-4b13-b3f1-e7f55540a9b2",
+                      "encryption": "none"
                     }
                   ]
                 }
               ]
             },
             "streamSettings": {
-              "network": "tcp",
+              "network": "xhttp",
               "security": "tls",
               "tlsSettings": {
-                "serverName": "example.com",
+                "serverName": "jp-xhttp.svc.plus",
                 "allowInsecure": false,
-                "fingerprint": "chrome"
+                "alpn": ["h2", "http/1.1", "h3"]
+              },
+              "xhttpSettings": {
+                "path": "/split",
+                "host": "jp-xhttp.svc.plus",
+                "mode": "auto"
               }
             },
             "tag": "proxy"

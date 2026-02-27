@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../utils/global_config.dart';
 import '../../widgets/log_console.dart';
@@ -100,6 +101,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Future<void> _onCreateConfig() async {
     final rawUri = _vlessUriController.text.trim();
+    final requiresUnlock = !Platform.isIOS;
 
     if (_bundleId == null || _bundleId!.isEmpty) {
       setState(() {
@@ -120,14 +122,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     final unlocked = GlobalState.isUnlocked.value;
     final password = GlobalState.sudoPassword.value;
-    if (!unlocked) {
+    if (requiresUnlock && !unlocked) {
       setState(() {
         _message = context.l10n.get('unlockFirst');
       });
       addAppLog('请先解锁后再创建配置', level: LogLevel.warning);
       return;
     }
-    if (password.isEmpty) {
+    if (requiresUnlock && password.isEmpty) {
       setState(() {
         _message = context.l10n.get('sudoMissing');
       });
@@ -170,16 +172,17 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     required bool autoFlow,
   }) async {
     if (_autoFlowRunning) return;
+    final requiresUnlock = !Platform.isIOS;
     final unlocked = GlobalState.isUnlocked.value;
     final password = GlobalState.sudoPassword.value;
-    if (!unlocked) {
+    if (requiresUnlock && !unlocked) {
       setState(() {
         _message = context.l10n.get('unlockFirst');
       });
       addAppLog('请先解锁后再创建配置', level: LogLevel.warning);
       return;
     }
-    if (password.isEmpty) {
+    if (requiresUnlock && password.isEmpty) {
       setState(() {
         _message = context.l10n.get('sudoMissing');
       });

@@ -86,6 +86,11 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // ✅ 注册生命周期观察器
+    if (Platform.isIOS) {
+      GlobalState.isUnlocked.value = true;
+      GlobalState.sudoPassword.value = '';
+      GlobalState.setTunnelModeEnabled(true);
+    }
 
     NativeBridge.initializeLogger((log) {
       addAppLog("[macOS] $log");
@@ -651,6 +656,9 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
               ValueListenableBuilder<bool>(
                 valueListenable: GlobalState.isUnlocked,
                 builder: (context, unlocked, _) {
+                  if (Platform.isIOS) {
+                    return const SizedBox.shrink();
+                  }
                   return IconButton(
                     icon: Icon(unlocked ? Icons.lock_open : Icons.lock),
                     onPressed: unlocked ? _lock : _promptUnlockDialog,

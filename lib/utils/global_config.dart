@@ -119,6 +119,9 @@ class GlobalState {
   static final ValueNotifier<String> httpPort = ValueNotifier<String>('1081');
 
   static String normalizeConnectionMode(String? value) {
+    if (Platform.isIOS) {
+      return tunnelConnectionMode;
+    }
     return value == proxyOnlyConnectionMode
         ? proxyOnlyConnectionMode
         : tunnelConnectionMode;
@@ -144,6 +147,10 @@ class GlobalState {
   }
 
   static void setTunnelModeEnabled(bool enabled) {
+    if (Platform.isIOS) {
+      setConnectionMode(tunnelConnectionMode);
+      return;
+    }
     setConnectionMode(
       enabled ? tunnelConnectionMode : proxyOnlyConnectionMode,
     );

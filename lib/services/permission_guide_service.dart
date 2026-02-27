@@ -30,6 +30,34 @@ class PermissionGuideReport {
 class PermissionGuideService {
   static const _prefsKey = 'permissionGuideDone';
 
+  static bool looksLikePacketTunnelPermissionDenied(String? message) {
+    final normalized = (message ?? '').trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    return normalized.contains('permission denied') ||
+        normalized.contains('authorization denied') ||
+        normalized.contains('not authorized');
+  }
+
+  static Future<bool> shouldPromptForPacketTunnelAuthorization({
+    String? failureMessage,
+  }) async {
+    if (!Platform.isMacOS) {
+      return false;
+    }
+    if (looksLikePacketTunnelPermissionDenied(failureMessage)) {
+      return true;
+    }
+    try {
+      final status = await NativeBridge.getPacketTunnelStatus();
+      if (status.status == 'not_configured') {
+        return true;
+      }
+      return looksLikePacketTunnelPermissionDenied(status.lastError);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     final done = prefs.getBool(_prefsKey) ?? false;
@@ -92,6 +120,7 @@ class PermissionGuideService {
 
     try {
       final status = await NativeBridge.getPacketTunnelStatus();
+      final lastError = status.lastError?.trim();
       if (status.status == 'not_configured') {
         return const PermissionCheckItem(
           id: 'packet_tunnel',
@@ -108,6 +137,20 @@ class PermissionGuideService {
           detail: 'Packet Tunnel is unsupported in current runtime.',
           suggestion:
               'Check NetworkExtension capability, PacketTunnel target embedding, and signing entitlement.',
+        );
+      }
+      if (lastError != null &&
+          lastError.isNotEmpty &&
+          status.status != 'connected') {
+        final permissionDenied =
+            looksLikePacketTunnelPermissionDenied(lastError);
+        return PermissionCheckItem(
+          id: 'packet_tunnel',
+          passed: false,
+          detail: 'Packet Tunnel last error: $lastError',
+          suggestion: permissionDenied
+              ? 'Open Privacy & Security, approve System VPN permission for Xstream Secure Tunnel, then retry.'
+              : 'Review the Packet Tunnel error details, then retry after fixing authorization or configuration.',
         );
       }
       final utunDetail = status.utunInterfaces.isEmpty

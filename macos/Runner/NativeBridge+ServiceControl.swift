@@ -306,7 +306,7 @@ extension AppDelegate {
     }
   }
 
-  private func stopDirectXray() -> Bool {
+  func stopDirectXray() -> Bool {
     guard let process = xrayProcess else {
       // No managed reference, but orphans may exist – handled separately.
       return true

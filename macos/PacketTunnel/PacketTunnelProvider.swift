@@ -272,20 +272,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   private func resolvePacketFlowFileDescriptor() -> (fd: Int32, detail: String) {
     let flowObj = packetFlow as NSObject
 
-    let keyPaths = [
-      "socket.fileDescriptor",
-      "_socket.fileDescriptor",
-      "socket.fd",
-      "_socket.fd",
-      "_packetSocket.fileDescriptor",
-      "_packetSocket.fd",
+    let selectorPaths = [
+      ["socket", "fileDescriptor"],
+      ["_socket", "fileDescriptor"],
+      ["socket", "fd"],
+      ["_socket", "fd"],
+      ["packetSocket", "fileDescriptor"],
+      ["packetSocket", "fd"],
+      ["_packetSocket", "fileDescriptor"],
+      ["_packetSocket", "fd"],
     ]
-    for keyPath in keyPaths {
-      if let number = flowObj.value(forKeyPath: keyPath) as? NSNumber {
-        let fd = number.int32Value
-        if fd >= 0 {
-          return (fd, "packetFlow.\(keyPath)")
-        }
+    for path in selectorPaths {
+      if let fd = resolveIntSelectorPath(on: flowObj, path: path), fd >= 0 {
+        return (fd, "packetFlow.\(path.joined(separator: "."))")
       }
     }
 
@@ -314,6 +313,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     return (-1, "no accessible fd selector on \(NSStringFromClass(type(of: flowObj)))")
+  }
+
+  private func resolveIntSelectorPath(on object: NSObject, path: [String]) -> Int32? {
+    guard !path.isEmpty else {
+      return nil
+    }
+    if path.count == 1 {
+      return callIntSelector(on: object, selectorName: path[0])
+    }
+
+    var current: NSObject? = object
+    for segment in path.dropLast() {
+      guard let unwrapped = current else {
+        return nil
+      }
+      current = callObjectSelector(on: unwrapped, selectorName: segment)
+    }
+
+    guard let target = current, let leaf = path.last else {
+      return nil
+    }
+    return callIntSelector(on: target, selectorName: leaf)
   }
 
   private func callIntSelector(on object: NSObject, selectorName: String) -> Int32? {

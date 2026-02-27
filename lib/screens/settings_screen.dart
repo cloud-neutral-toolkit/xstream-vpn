@@ -20,8 +20,8 @@ import '../../services/session/session_manager.dart';
 import '../../services/sync/desktop_sync_service.dart';
 import '../../services/sync/sync_state.dart';
 import '../../services/mcp/runtime_mcp_service.dart';
-import '../../services/permission_guide_service.dart';
 import '../../utils/app_logger.dart';
+import '../widgets/permission_guide_dialog.dart';
 import '../widgets/log_console.dart' show LogLevel;
 
 class SettingsScreen extends StatefulWidget {
@@ -744,8 +744,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (value) {
                           setState(
                               () => GlobalState.sniffingEnabled.value = value);
-                          addAppLog(
-                              '嗅探: ${value ? "开启" : "关闭"}');
+                          addAppLog('嗅探: ${value ? "开启" : "关闭"}');
                         },
                         title: Text(context.l10n.get('sniffing')),
                         subtitle: Text(
@@ -764,8 +763,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (value) {
                           setState(
                               () => GlobalState.fallbackToProxy.value = value);
-                          addAppLog(
-                              '回退到代理: ${value ? "开启" : "关闭"}');
+                          addAppLog('回退到代理: ${value ? "开启" : "关闭"}');
                         },
                         title: Text(context.l10n.get('fallbackProxy')),
                         subtitle: Text(
@@ -784,8 +782,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (value) {
                           setState(
                               () => GlobalState.fallbackToDomain.value = value);
-                          addAppLog(
-                              '回退到域名: ${value ? "开启" : "关闭"}');
+                          addAppLog('回退到域名: ${value ? "开启" : "关闭"}');
                         },
                         title: Text(context.l10n.get('fallbackDomain')),
                         subtitle: Text(
@@ -804,8 +801,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onChanged: (value) {
                           setState(
                               () => GlobalState.ipv6ToDomain.value = value);
-                          addAppLog(
-                              'IPv6 to Domain: ${value ? "开启" : "关闭"}');
+                          addAppLog('IPv6 to Domain: ${value ? "开启" : "关闭"}');
                         },
                         title: Text(context.l10n.get('ipv6ToDomain')),
                         subtitle: Text(
@@ -909,8 +905,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       ListTile(
-                        leading: Icon(Icons.delete_forever,
-                            color: Colors.red[400]),
+                        leading:
+                            Icon(Icons.delete_forever, color: Colors.red[400]),
                         title: Text(context.l10n.get('deleteConfig'),
                             style: TextStyle(color: Colors.red[400])),
                         onTap: isUnlocked ? _onDeleteConfig : null,
@@ -962,7 +958,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           addAppLog('系统级网络隧道: ${value ? "开启" : "关闭"}');
                           _refreshTunStatus();
                         },
-                        title: const Text('隧道模式', style: TextStyle(fontSize: 16)),
+                        title:
+                            const Text('隧道模式', style: TextStyle(fontSize: 16)),
                         subtitle: const Text(
                           '启用系统级网络隧道',
                           style: TextStyle(fontSize: 12),
@@ -1000,7 +997,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onChanged: available && !loading
                                 ? _toggleRuntimeMcp
                                 : null,
-                            title: Text(context.l10n.get('runtimeMcpServer'), style: const TextStyle(fontSize: 16)),
+                            title: Text(context.l10n.get('runtimeMcpServer'),
+                                style: const TextStyle(fontSize: 16)),
                             subtitle: Text(
                               loading
                                   ? context.l10n.get('runtimeMcpStatusLoading')
@@ -1050,7 +1048,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 48,
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.security),
-                label: Text(context.l10n.get('permissionGuide'), style: const TextStyle(fontSize: 16)),
+                label: Text(context.l10n.get('permissionGuide'),
+                    style: const TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.deepPurple.withValues(alpha: 0.05),
                   foregroundColor: Colors.deepPurple,
@@ -1071,7 +1070,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   height: 48,
                   child: ElevatedButton.icon(
                     icon: const Icon(Icons.restore),
-                    label: Text(context.l10n.get('resetAll'), style: const TextStyle(fontSize: 16)),
+                    label: Text(context.l10n.get('resetAll'),
+                        style: const TextStyle(fontSize: 16)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red[500],
                       foregroundColor: Colors.white,
@@ -1504,157 +1504,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showPermissionGuide() async {
-    final report = await PermissionGuideService.inspectSystemPermissions();
-    if (!mounted) return;
-
-    if (GlobalState.permissionGuideDone.value && report.allPassed) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(context.l10n.get('permissionGuide')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(context.l10n.get('permissionFinished')),
-              const SizedBox(height: 8),
-              Text(
-                report.allPassed
-                    ? context.l10n.get('permissionGuideAllPassed')
-                    : context.l10n.get('permissionGuideNeedsFix'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.l10n.get('close')),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    if (!report.allPassed && GlobalState.permissionGuideDone.value) {
-      GlobalState.permissionGuideDone.value = false;
-    }
-
-    const text = '''1. 允许应用读写 Application Support 配置目录
-2. 允许系统级 VPN（NetworkExtension / Packet Tunnel）权限
-3. 确认 LaunchAgent 能在当前用户会话中启动
-4. 可查询系统网络设置（路由、DNS、接口）''';
-
-    String titleForCheck(String id, BuildContext context) {
-      switch (id) {
-        case 'app_support_rw':
-          return context.l10n.get('permissionCheckAppSupport');
-        case 'packet_tunnel':
-          return context.l10n.get('permissionCheckPacketTunnel');
-        case 'launch_agent':
-          return context.l10n.get('permissionCheckLaunchAgent');
-        case 'network_query':
-          return context.l10n.get('permissionCheckNetworkQuery');
-        default:
-          return id;
-      }
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(context.l10n.get('permissionGuide')),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(context.l10n.get('permissionGuideIntro')),
-              const SizedBox(height: 8),
-              const SelectableText(text),
-              const SizedBox(height: 12),
-              ...report.items.map((item) {
-                final statusText = item.passed
-                    ? context.l10n.get('permissionStatusPass')
-                    : context.l10n.get('permissionStatusFail');
-                final statusColor = item.passed ? Colors.green : Colors.red;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${titleForCheck(item.id, context)}: $statusText',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(item.detail, style: const TextStyle(fontSize: 12)),
-                      if (!item.passed) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          item.suggestion,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.orange,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                );
-              }),
-              if (!report.allPassed)
-                Text(
-                  context.l10n.get('permissionBootstrapHint'),
-                  style: const TextStyle(fontSize: 12, color: Colors.orange),
-                ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _openSecurityPage,
-                child: Text(context.l10n.get('openPrivacy')),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showPermissionGuide();
-                },
-                child: Text(context.l10n.get('permissionRecheck')),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              GlobalState.permissionGuideDone.value = report.allPassed;
-              if (!report.allPassed) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(context.l10n.get('permissionGuideNeedsFix')),
-                  ),
-                );
-              }
-              Navigator.pop(context);
-            },
-            child: Text(context.l10n.get('confirm')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openSecurityPage() {
-    if (Platform.isMacOS) {
-      Process.run(
-          'open', ['x-apple.systempreferences:com.apple.preference.security']);
-    } else if (Platform.isWindows) {
-      Process.run('cmd', ['/c', 'start', 'ms-settings:privacy']);
-    } else if (Platform.isLinux) {
-      Process.run('xdg-open', ['settings://privacy']);
-    }
+    await showPermissionGuideDialog(context);
   }
 }

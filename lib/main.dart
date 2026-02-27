@@ -21,6 +21,7 @@ import 'services/global_proxy_service.dart';
 import 'services/permission_guide_service.dart';
 import 'services/sync/desktop_sync_service.dart';
 import 'services/tun_settings_service.dart';
+import 'widgets/permission_guide_dialog.dart';
 import 'widgets/log_console.dart' show LogLevel;
 
 void main(List<String> args) async {
@@ -394,6 +395,18 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       GlobalState.activeNodeName.value = nodeName;
     }
     addAppLog('[menu] $message');
+    if (useTunMode && !running) {
+      final shouldShow =
+          await PermissionGuideService.shouldPromptForPacketTunnelAuthorization(
+        failureMessage: message,
+      );
+      if (mounted && shouldShow) {
+        await showPermissionGuideDialog(
+          context,
+          failureMessage: message,
+        );
+      }
+    }
   }
 
   Future<void> _stopAccelerationFromMenu(Map<String, dynamic> payload) async {
@@ -478,7 +491,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   }
 
   // Drawer removed in favor of NavigationBar
-
 
   PopupMenuItem<_AddNodeMenuAction> _buildAddNodeItem(
     BuildContext context, {
@@ -615,7 +627,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF5B8DEF).withValues(alpha: 0.35),
+                          color:
+                              const Color(0xFF5B8DEF).withValues(alpha: 0.35),
                           blurRadius: 8,
                           offset: const Offset(0, 3),
                         ),
@@ -645,7 +658,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
           ),
           bottomNavigationBar: isMobile
               ? NavigationBar(
-                  selectedIndex: _clampIndex(isMobile, mobilePages, desktopPages),
+                  selectedIndex:
+                      _clampIndex(isMobile, mobilePages, desktopPages),
                   labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                   onDestinationSelected: (index) =>
                       setState(() => _currentIndex = index),
@@ -664,7 +678,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
               : Row(
                   children: [
                     NavigationRail(
-                      selectedIndex: _clampIndex(isMobile, mobilePages, desktopPages),
+                      selectedIndex:
+                          _clampIndex(isMobile, mobilePages, desktopPages),
                       onDestinationSelected: (index) =>
                           setState(() => _currentIndex = index),
                       labelType: NavigationRailLabelType.all,
@@ -673,7 +688,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                     const VerticalDivider(width: 1),
                     Expanded(
                       child: IndexedStack(
-                          index: _clampIndex(isMobile, mobilePages, desktopPages),
+                          index:
+                              _clampIndex(isMobile, mobilePages, desktopPages),
                           children: desktopPages),
                     ),
                   ],
@@ -683,7 +699,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     );
   }
 
-  int _clampIndex(bool isMobile, List<Widget> mobilePages, List<Widget> desktopPages) {
+  int _clampIndex(
+      bool isMobile, List<Widget> mobilePages, List<Widget> desktopPages) {
     if (isMobile && _currentIndex >= mobilePages.length) {
       return mobilePages.length - 1;
     }

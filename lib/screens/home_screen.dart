@@ -5,7 +5,9 @@ import '../../utils/native_bridge.dart';
 import '../../utils/global_config.dart' show GlobalState;
 import '../../utils/app_logger.dart';
 import '../l10n/app_localizations.dart';
+import '../../services/permission_guide_service.dart';
 import '../../services/vpn_config_service.dart';
+import '../widgets/permission_guide_dialog.dart';
 import '../widgets/log_console.dart' show LogLevel;
 
 class HomeScreen extends StatefulWidget {
@@ -262,6 +264,9 @@ class _HomeScreenState extends State<HomeScreen> {
         GlobalState.activeNodeName.value = '';
         _syncConnectedMeta();
         _showMessage(msg);
+        if (useTunMode) {
+          await _maybeShowPacketTunnelPermissionGuide(msg);
+        }
         _scheduleClearHighlight();
         return;
       }
@@ -300,6 +305,20 @@ class _HomeScreenState extends State<HomeScreen> {
         _isSwitchingNode = false;
       }
     }
+  }
+
+  Future<void> _maybeShowPacketTunnelPermissionGuide(
+    String failureMessage,
+  ) async {
+    final shouldShow =
+        await PermissionGuideService.shouldPromptForPacketTunnelAuthorization(
+      failureMessage: failureMessage,
+    );
+    if (!mounted || !shouldShow) return;
+    await showPermissionGuideDialog(
+      context,
+      failureMessage: failureMessage,
+    );
   }
 
   Widget _buildMobileHeroCard(BuildContext context) {
@@ -362,7 +381,8 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.dns_outlined, size: 20, color: Color(0xFF4A6572)),
+                  const Icon(Icons.dns_outlined,
+                      size: 20, color: Color(0xFF4A6572)),
                   const SizedBox(width: 8),
                   Text(
                     context.l10n.get('nodeList'),
@@ -412,7 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final isSelected = _selectedNode == node.name;
                       final latency = _latencyByNode[node.name];
                       final isUnlocked = GlobalState.isUnlocked.value;
-                      
+
                       return GestureDetector(
                         onTap: (isUnlocked && !_isSwitchingNode)
                             ? () => _selectNode(node)
@@ -422,14 +442,18 @@ class _HomeScreenState extends State<HomeScreen> {
                           margin: const EdgeInsets.only(right: 12),
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: isActive 
-                                ? const Color(0xFFE8F5E9) 
-                                : (isSelected ? const Color(0xFFE3F2FD) : Colors.white),
+                            color: isActive
+                                ? const Color(0xFFE8F5E9)
+                                : (isSelected
+                                    ? const Color(0xFFE3F2FD)
+                                    : Colors.white),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isActive
                                   ? Colors.green.withValues(alpha: 0.5)
-                                  : (isSelected ? Colors.blue.withValues(alpha: 0.5) : Colors.grey.withValues(alpha: 0.2)),
+                                  : (isSelected
+                                      ? Colors.blue.withValues(alpha: 0.5)
+                                      : Colors.grey.withValues(alpha: 0.2)),
                               width: (isActive || isSelected) ? 2 : 1,
                             ),
                           ),
@@ -444,19 +468,23 @@ class _HomeScreenState extends State<HomeScreen> {
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
-                                        color: isActive ? Colors.green[800] : const Color(0xFF222222),
+                                        color: isActive
+                                            ? Colors.green[800]
+                                            : const Color(0xFF222222),
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                   if (isActive)
-                                    const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                                    const Icon(Icons.check_circle,
+                                        color: Colors.green, size: 18),
                                 ],
                               ),
                               const Spacer(),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF5F7FA),
                                   borderRadius: BorderRadius.circular(8),
@@ -464,11 +492,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.speed, size: 12, color: Colors.grey),
+                                    const Icon(Icons.speed,
+                                        size: 12, color: Colors.grey),
                                     const SizedBox(width: 4),
                                     Text(
                                       latency != null ? '${latency}ms' : '--',
-                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey),
                                     ),
                                   ],
                                 ),

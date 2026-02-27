@@ -92,8 +92,14 @@ class AppLocalizations {
       'permissionGuide': 'Permissions Guide',
       'permissionGuideIntro':
           'Follow the steps below in Privacy & Security to grant permissions:',
+      'permissionGuideSteps':
+          '1. Allow the app to read and write its Application Support directory\n2. Allow System VPN (NetworkExtension / Packet Tunnel)\n3. When macOS shows the authorization prompt for Xstream Secure Tunnel, choose Allow\n4. Confirm LaunchAgent can start in the current user session\n5. Confirm the app can query system network settings',
       'openPrivacy': 'Open Privacy & Security',
       'permissionFinished': 'All permissions completed',
+      'permissionGuideFailureTitle': 'System VPN authorization needed',
+      'permissionGuideFailureIntro':
+          'The Secure Tunnel could not start because macOS has not granted the required authorization yet. Complete the checks below, approve the System VPN request for Xstream Secure Tunnel, then retry.',
+      'permissionGuideLastError': 'Last start error',
       'permissionCheckAppSupport': 'Config Directory Read/Write',
       'permissionCheckPacketTunnel': 'System VPN Packet Tunnel Permission',
       'permissionCheckLaunchAgent': 'LaunchAgent Bootstrap Context',
@@ -106,6 +112,8 @@ class AppLocalizations {
       'permissionRecheck': 'Recheck',
       'permissionBootstrapHint':
           'If you see "Bootstrap failed: 5", run app in a normal desktop user session and verify LaunchAgent permissions.',
+      'permissionGuideTunnelDeniedHint':
+          'If the last error contains "permission denied", open Privacy & Security and approve the System VPN request for Xstream Secure Tunnel.',
       'syncConfig': 'Sync Config',
       'deleteConfig': 'Delete Config',
       'saveConfig': 'Save Config',
@@ -259,8 +267,14 @@ class AppLocalizations {
       'resetAll': '重置所有配置',
       'permissionGuide': '系统权限向导',
       'permissionGuideIntro': '请在“隐私与安全性”中完成以下步骤：',
+      'permissionGuideSteps':
+          '1. 允许应用读写 Application Support 配置目录\n2. 允许系统级 VPN（NetworkExtension / Packet Tunnel）权限\n3. 当 macOS 弹出 Xstream Secure Tunnel 授权提示时，选择允许\n4. 确认 LaunchAgent 能在当前用户会话中启动\n5. 确认应用可以查询系统网络设置',
       'openPrivacy': '打开隐私与安全性',
       'permissionFinished': '权限检查已完成',
+      'permissionGuideFailureTitle': '需要完成系统 VPN 授权',
+      'permissionGuideFailureIntro':
+          'Secure Tunnel 启动失败，macOS 尚未完成所需授权。请先完成下面的检查项，并在系统弹窗中允许 Xstream Secure Tunnel 后重试。',
+      'permissionGuideLastError': '最近启动错误',
       'permissionCheckAppSupport': '配置目录读写',
       'permissionCheckPacketTunnel': '系统 VPN Packet Tunnel 权限',
       'permissionCheckLaunchAgent': 'LaunchAgent 启动上下文',
@@ -272,6 +286,8 @@ class AppLocalizations {
       'permissionRecheck': '重新检查',
       'permissionBootstrapHint':
           '若出现“Bootstrap failed: 5”，请在普通桌面用户会话运行应用并确认 LaunchAgent 权限。',
+      'permissionGuideTunnelDeniedHint':
+          '若最近错误包含“permission denied”，请打开“隐私与安全性”，完成 Xstream Secure Tunnel 的系统 VPN 授权后再重试。',
       'syncConfig': '同步配置',
       'deleteConfig': '删除配置',
       'saveConfig': '保存配置',

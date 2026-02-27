@@ -142,6 +142,8 @@ extension AppDelegate {
     }
     // Always stop existing instance before a new launch.
     _ = stopDirectXray()
+    // Kill any orphaned xray processes left from previous app sessions.
+    killOrphanXrayProcesses()
     if isDirectXrayRunning() {
       result(
         FlutterError(
@@ -239,14 +241,74 @@ extension AppDelegate {
   }
 
   private func isDirectXrayRunning() -> Bool {
-    guard let process = xrayProcess else {
+    // 1. Check the in-memory process reference.
+    if let process = xrayProcess, process.isRunning {
+      return true
+    }
+    // 2. Fallback: check if any xray process is running on the system.
+    //    This catches orphaned processes from previous app launches.
+    return isAnyXrayRunningOnSystem()
+  }
+
+  /// Check the system process table for any running xray instances.
+  private func isAnyXrayRunningOnSystem() -> Bool {
+    let task = Process()
+    task.launchPath = "/usr/bin/pgrep"
+    task.arguments = ["-f", "xray run -c"]
+    let pipe = Pipe()
+    task.standardOutput = pipe
+    task.standardError = Pipe()
+    do {
+      try task.run()
+      task.waitUntilExit()
+      let data = pipe.fileHandleForReading.readDataToEndOfFile()
+      let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      return task.terminationStatus == 0 && !output.isEmpty
+    } catch {
       return false
     }
-    return process.isRunning
+  }
+
+  /// Kill all orphaned xray processes on the system, preserving `xrayProcess` if it is still valid.
+  func killOrphanXrayProcesses() {
+    let task = Process()
+    task.launchPath = "/usr/bin/pgrep"
+    task.arguments = ["-f", "xray run -c"]
+    let pipe = Pipe()
+    task.standardOutput = pipe
+    task.standardError = Pipe()
+    do {
+      try task.run()
+      task.waitUntilExit()
+    } catch {
+      return
+    }
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let pids = (String(data: data, encoding: .utf8) ?? "")
+      .components(separatedBy: .newlines)
+      .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+
+    let managedPid = xrayProcess?.processIdentifier
+    var killed = 0
+    for pid in pids {
+      if pid == managedPid { continue }  // Don't kill our own managed process.
+      kill(pid, SIGTERM)
+      killed += 1
+    }
+    if killed > 0 {
+      logToFlutter("warn", "killed \(killed) orphan xray process(es): \(pids.filter { $0 != managedPid })")
+      // Give them a moment to exit, then force kill any survivors.
+      Thread.sleep(forTimeInterval: 0.5)
+      for pid in pids {
+        if pid == managedPid { continue }
+        kill(pid, SIGKILL)
+      }
+    }
   }
 
   private func stopDirectXray() -> Bool {
     guard let process = xrayProcess else {
+      // No managed reference, but orphans may exist – handled separately.
       return true
     }
     if process.isRunning {
@@ -262,8 +324,9 @@ extension AppDelegate {
         Thread.sleep(forTimeInterval: 0.3)
       }
     }
+    let stopped = !process.isRunning
     xrayProcess = nil
-    return true
+    return stopped
   }
 
   private func waitForDirectXrayReady(runtimeLogPath: String, timeoutSeconds: TimeInterval) -> Bool {

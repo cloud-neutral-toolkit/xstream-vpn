@@ -131,6 +131,7 @@ extension AppDelegate {
     }
     let requestedNodeName = (nodeName?.isEmpty == false) ? nodeName! : "default-node"
     logToFlutter("info", "startNodeService request node=\(requestedNodeName), sourceConfig=\(sourceConfig)")
+
     let runningBeforeStart = isDirectXrayRunning()
     if runningBeforeStart {
       let activeNode = readActiveNodeName()
@@ -138,11 +139,19 @@ extension AppDelegate {
         result("服务已在运行")
         return
       }
-      _ = stopDirectXray()
-      if isDirectXrayRunning() {
-        result(FlutterError(code: "EXEC_FAILED", message: "xray stop existing process failed", details: nil))
-        return
-      }
+    }
+    // Always deduplicate existing runtime instances before a new launch.
+    _ = stopDirectXray()
+    if isDirectXrayRunning() {
+      let pids = listDirectXrayPids(configPath: runtimeConfigPath)
+      result(
+        FlutterError(
+          code: "EXEC_FAILED",
+          message: "xray stop existing process failed",
+          details: "remaining pids=\(pids)"
+        )
+      )
+      return
     }
     if !FileManager.default.isExecutableFile(atPath: xrayExecutable) {
       result(FlutterError(code: "XRAY_MISSING", message: "xray not initialized", details: xrayExecutable))
@@ -216,6 +225,7 @@ sleep 1
   }
 
   private func stopNodeServiceWithDirectXray(result: @escaping FlutterResult) {
+
     if stopDirectXray() {
       logToFlutter("info", "stopNodeService success")
       clearActiveNodeName()
@@ -227,48 +237,46 @@ sleep 1
   }
 
   private func isDirectXrayRunning() -> Bool {
-    guard let xrayExecutable = resolvedXrayExecutablePath() else {
-      return false
-    }
     let runtimeConfigPath = resolvedRuntimeConfigPath()
-    let escapedRuntimeConfig = shellEscaped(runtimeConfigPath)
-    let escapedXray = shellEscaped(xrayExecutable)
-    let checkCommand = """
-XRAY_BIN=\(escapedXray)
-XRAY_CFG=\(escapedRuntimeConfig)
-if pgrep -f "$XRAY_BIN run -c $XRAY_CFG" >/dev/null; then
-  exit 0
-fi
-if pgrep -f "$XRAY_BIN run -c" >/dev/null; then
-  exit 0
-fi
-if pgrep -f "xray run -c $XRAY_CFG" >/dev/null; then
-  exit 0
-fi
-exit 1
-"""
-    let (ok, _) = runCommandAndCapture(command: checkCommand)
-    return ok
+    return !listDirectXrayPids(configPath: runtimeConfigPath).isEmpty
   }
 
   private func stopDirectXray() -> Bool {
-    guard let xrayExecutable = resolvedXrayExecutablePath() else {
-      return false
-    }
     let runtimeConfigPath = resolvedRuntimeConfigPath()
-    let escapedRuntimeConfig = shellEscaped(runtimeConfigPath)
-    let escapedXray = shellEscaped(xrayExecutable)
-    let stopCommand = """
-XRAY_BIN=\(escapedXray)
-XRAY_CFG=\(escapedRuntimeConfig)
-pkill -f "$XRAY_BIN run -c $XRAY_CFG" || true
-pkill -f "$XRAY_BIN run -c" || true
-pkill -f "xray run -c $XRAY_CFG" || true
-sleep 1
-"""
-    _ = runCommandAndCapture(command: stopCommand)
-    return !isDirectXrayRunning()
+    let firstBatch = listDirectXrayPids(configPath: runtimeConfigPath)
+    if !firstBatch.isEmpty {
+      let pidList = firstBatch.map(String.init).joined(separator: " ")
+      _ = runCommandAndCapture(command: "/bin/kill \(pidList) >/dev/null 2>&1 || true")
+      Thread.sleep(forTimeInterval: 0.6)
+    }
+
+    let remaining = listDirectXrayPids(configPath: runtimeConfigPath)
+    if !remaining.isEmpty {
+      let pidList = remaining.map(String.init).joined(separator: " ")
+      _ = runCommandAndCapture(command: "/bin/kill -9 \(pidList) >/dev/null 2>&1 || true")
+      Thread.sleep(forTimeInterval: 0.3)
+    }
+    return listDirectXrayPids(configPath: runtimeConfigPath).isEmpty
   }
+
+  private func listDirectXrayPids(configPath: String) -> [Int32] {
+    let escapedConfig = shellEscaped(configPath)
+    let listCommand = """
+CFG=\(escapedConfig)
+/bin/ps -axo pid=,command= | /usr/bin/awk -v cfg="$CFG" '
+  /xray run -c/ && index($0, cfg) > 0 && index($0, "/bin/zsh -c") == 0 {print $1}
+'
+"""
+    let (ok, output) = runCommandAndCapture(command: listCommand)
+    if !ok {
+      return []
+    }
+    return output
+      .split(whereSeparator: \.isNewline)
+      .compactMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+  }
+
+
 
   private func waitForDirectXrayReady(runtimeLogPath: String, timeoutSeconds: TimeInterval) -> Bool {
     let started = Date()

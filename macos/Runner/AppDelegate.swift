@@ -21,6 +21,9 @@ class AppDelegate: FlutterAppDelegate {
   private var nativeChannel: FlutterMethodChannel?
   private var menuState = MenuState()
 
+  /// The managed xray child process (proxy mode).
+  var xrayProcess: Process?
+
   private var statusLineItem = NSMenuItem(title: "Status: Disconnected", action: nil, keyEquivalent: "")
   private var nodeLineItem = NSMenuItem(title: "Node: -", action: nil, keyEquivalent: "")
   private var startStopItem = NSMenuItem(title: "Start Acceleration", action: #selector(toggleAcceleration), keyEquivalent: "")

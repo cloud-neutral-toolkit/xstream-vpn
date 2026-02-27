@@ -1,0 +1,4 @@
+interface:
+  display_name: "Xstream Functional Baseline"
+  short_description: "Verify macOS tunnel, proxy, UI, and external browsing health"
+  default_prompt: "Use $xstream-functional-test-baseline to verify Xstream build health, System VPN tunnel mode, proxy mode, UI start-stop-reconnect-mode-switch behavior, routing, data-plane checks, and external browsing benchmarks on macOS."

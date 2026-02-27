@@ -1,11 +1,20 @@
+import Darwin
 import Foundation
 import Network
 import NetworkExtension
-import Darwin
 import ObjectiveC.runtime
 import os.log
 
 let tunnelLog = OSLog(subsystem: "plus.svc.xstream", category: "PacketTunnel")
+#if os(iOS)
+  // iPhoneOS SDK does not expose these kernel control macros to Swift, but the
+  // Packet Tunnel getsockopt call still uses the standard XNU values.
+  private let systemProtoControlLevel: Int32 = 2
+  private let utunOptionInterfaceName: Int32 = 2
+#else
+  private let systemProtoControlLevel = SYSPROTO_CONTROL
+  private let utunOptionInterfaceName = UTUN_OPT_IFNAME
+#endif
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var activeSettings: NEPacketTunnelNetworkSettings?
@@ -30,7 +39,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         if let error {
-          os_log("PacketTunnelProvider: setTunnelNetworkSettings failed: %{public}@", log: tunnelLog, type: .error, error.localizedDescription)
+          os_log(
+            "PacketTunnelProvider: setTunnelNetworkSettings failed: %{public}@", log: tunnelLog,
+            type: .error, error.localizedDescription)
           self.statusStore.markFailed(error.localizedDescription)
           completionHandler(error)
           return
@@ -42,7 +53,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let resolvedFd = self.resolvePacketFlowFileDescriptor()
         let resolvedTun = self.resolveDarwinTunnelHandle(preferredFd: resolvedFd)
         let fd = resolvedTun.fd
-        let egressInterface = self.monitor.currentPath.availableInterfaces.first(where: { !$0.name.contains("utun") })?.name ?? ""
+        let egressInterface =
+          self.monitor.currentPath.availableInterfaces.first(where: { !$0.name.contains("utun") })?
+          .name ?? ""
 
         do {
           let configData = self.sanitizeConfigForDarwinTun(
@@ -59,18 +72,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           os_log("PacketTunnelProvider: Engine started successfully", log: tunnelLog, type: .info)
           completionHandler(nil)
         } catch {
-          os_log("PacketTunnelProvider: Engine failed to start: %{public}@", log: tunnelLog, type: .error, error.localizedDescription)
+          os_log(
+            "PacketTunnelProvider: Engine failed to start: %{public}@", log: tunnelLog,
+            type: .error, error.localizedDescription)
           self.rollbackStartFailure(error: error, completionHandler: completionHandler)
         }
       }
     } catch {
-      os_log("PacketTunnelProvider: startTunnel exception: %{public}@", log: tunnelLog, type: .error, error.localizedDescription)
+      os_log(
+        "PacketTunnelProvider: startTunnel exception: %{public}@", log: tunnelLog, type: .error,
+        error.localizedDescription)
       statusStore.markFailed(error.localizedDescription)
       completionHandler(error)
     }
   }
 
-  override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+  override func stopTunnel(
+    with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
+  ) {
     os_log(
       "PacketTunnelProvider: stopping tunnel (reason=%{public}d)",
       log: tunnelLog,
@@ -139,10 +158,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         guard let raw = settings[key] as? String else {
           continue
         }
-        let isValidUtun = raw.range(
-          of: #"^utun[0-9]+$"#,
-          options: .regularExpression
-        ) != nil
+        let isValidUtun =
+          raw.range(
+            of: #"^utun[0-9]+$"#,
+            options: .regularExpression
+          ) != nil
         if !isValidUtun {
           settings.removeValue(forKey: key)
           updated = true
@@ -169,7 +189,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return (try? JSONSerialization.data(withJSONObject: patched)) ?? data
   }
 
-  private func shouldEnableIPv6(options: [String: NSObject], launchOptions: [String: NSObject]?) -> Bool {
+  private func shouldEnableIPv6(options: [String: NSObject], launchOptions: [String: NSObject]?)
+    -> Bool
+  {
     let tun46Setting = (options["tun46Setting"] as? NSNumber)?.intValue ?? 2
     switch tun46Setting {
     case 0:
@@ -213,10 +235,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     let ipv4 = NEIPv4Settings(addresses: ipv4Addresses, subnetMasks: ipv4Masks)
-    let ipv4Included = (options["ipv4IncludedRoutes"] as? [[String: String]]) ?? [[
-      "destinationAddress": "0.0.0.0",
-      "subnetMask": "0.0.0.0",
-    ]]
+    let ipv4Included =
+      (options["ipv4IncludedRoutes"] as? [[String: String]]) ?? [
+        [
+          "destinationAddress": "0.0.0.0",
+          "subnetMask": "0.0.0.0",
+        ]
+      ]
     ipv4.includedRoutes = ipv4Included.compactMap { route in
       guard
         let destinationAddress = route["destinationAddress"],
@@ -227,7 +252,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return NEIPv4Route(destinationAddress: destinationAddress, subnetMask: subnetMask)
     }
 
-    let ipv4Excluded = (options["ipv4ExcludedRoutes"] as? [[String: String]])
+    let ipv4Excluded =
+      (options["ipv4ExcludedRoutes"] as? [[String: String]])
       ?? (options["ipv4ExcludedRouteAddresses"] as? [[String: String]])
     if let ipv4Excluded {
       ipv4.excludedRoutes = ipv4Excluded.compactMap { route in
@@ -251,10 +277,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           networkPrefixLengths: ipv6Prefixes.map { NSNumber(value: $0) }
         )
 
-        let ipv6Included = (options["ipv6IncludedRoutes"] as? [[String: Any]]) ?? [[
-          "destinationAddress": "::",
-          "networkPrefixLength": NSNumber(value: 0),
-        ]]
+        let ipv6Included =
+          (options["ipv6IncludedRoutes"] as? [[String: Any]]) ?? [
+            [
+              "destinationAddress": "::",
+              "networkPrefixLength": NSNumber(value: 0),
+            ]
+          ]
         ipv6.includedRoutes = parseIPv6Routes(ipv6Included)
 
         if let ipv6Excluded = options["ipv6ExcludedRoutes"] as? [[String: Any]] {
@@ -363,7 +392,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) -> (fd: Int32, detail: String, interfaceName: String?)? {
     var matches: [(fd: Int32, interfaceName: String)] = []
 
-    for candidate in 0 ... Int(maxFd) {
+    for candidate in 0...Int(maxFd) {
       let fd = Int32(candidate)
       guard fcntl(fd, F_GETFD) != -1 else {
         continue
@@ -399,8 +428,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let result = buffer.withUnsafeMutableBufferPointer { pointer in
       getsockopt(
         fd,
-        SYSPROTO_CONTROL,
-        UTUN_OPT_IFNAME,
+        systemProtoControlLevel,
+        utunOptionInterfaceName,
         pointer.baseAddress,
         &length
       )
@@ -457,7 +486,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private func callIntSelector(on object: NSObject, selectorName: String) -> Int32? {
     let selector = NSSelectorFromString(selectorName)
-    guard object.responds(to: selector), let method = class_getInstanceMethod(type(of: object), selector) else {
+    guard object.responds(to: selector),
+      let method = class_getInstanceMethod(type(of: object), selector)
+    else {
       return nil
     }
     typealias Getter = @convention(c) (AnyObject, Selector) -> Int
@@ -469,7 +500,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private func callObjectSelector(on object: NSObject, selectorName: String) -> NSObject? {
     let selector = NSSelectorFromString(selectorName)
-    guard object.responds(to: selector), let method = class_getInstanceMethod(type(of: object), selector) else {
+    guard object.responds(to: selector),
+      let method = class_getInstanceMethod(type(of: object), selector)
+    else {
       return nil
     }
     typealias Getter = @convention(c) (AnyObject, Selector) -> Unmanaged<AnyObject>?
@@ -487,7 +520,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         continue
       }
       defer { free(ivars) }
-      for i in 0 ..< Int(count) {
+      for i in 0..<Int(count) {
         let ivar = ivars[i]
         guard let name = ivar_getName(ivar) else { continue }
         let ivarName = String(cString: name)
@@ -536,7 +569,8 @@ private final class XrayTunnelEngine: SecureTunnelEngine {
         userInfo: [NSLocalizedDescriptionKey: "Missing Xray config for Packet Tunnel"]
       )
     }
-    let handle = try bridge.start(configData: config, fd: fd, fdDetail: fdDetail, egressInterface: egressInterface)
+    let handle = try bridge.start(
+      configData: config, fd: fd, fdDetail: fdDetail, egressInterface: egressInterface)
     tunnelHandle = handle
   }
 
@@ -550,7 +584,8 @@ private final class XrayTunnelEngine: SecureTunnelEngine {
 }
 
 private final class XrayTunnelBridge {
-  private typealias StartXrayTunnelWithFdFn = @convention(c) (UnsafePointer<CChar>?, Int32, UnsafePointer<CChar>?) -> Int64
+  private typealias StartXrayTunnelWithFdFn =
+    @convention(c) (UnsafePointer<CChar>?, Int32, UnsafePointer<CChar>?) -> Int64
   private typealias StopXrayTunnelFn = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
   private typealias FreeXrayTunnelFn = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
   private typealias FreeCStringFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
@@ -581,13 +616,16 @@ private final class XrayTunnelBridge {
     }
   }
 
-  func start(configData: Data, fd: Int32, fdDetail: String, egressInterface: String) throws -> Int64 {
+  func start(configData: Data, fd: Int32, fdDetail: String, egressInterface: String) throws -> Int64
+  {
     guard let startFn else {
       let message = loadError ?? "failed to load bridge symbols"
       throw NSError(
         domain: "Xstream.PacketTunnel",
         code: -11,
-        userInfo: [NSLocalizedDescriptionKey: "StartXrayTunnelWithFd symbol unavailable (\(message))"]
+        userInfo: [
+          NSLocalizedDescriptionKey: "StartXrayTunnelWithFd symbol unavailable (\(message))"
+        ]
       )
     }
     guard fd >= 0 else {
@@ -595,7 +633,10 @@ private final class XrayTunnelBridge {
       throw NSError(
         domain: "Xstream.PacketTunnel",
         code: -12,
-        userInfo: [NSLocalizedDescriptionKey: "Packet Tunnel handoff failed: system tun fd unavailable (fdDetail=\(fdDetail), egress=\(egressInterface), \(summary))"]
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Packet Tunnel handoff failed: system tun fd unavailable (fdDetail=\(fdDetail), egress=\(egressInterface), \(summary))"
+        ]
       )
     }
     let json = String(data: configData, encoding: .utf8) ?? "{}"
@@ -608,7 +649,10 @@ private final class XrayTunnelBridge {
           throw NSError(
             domain: "Xstream.PacketTunnel",
             code: -12,
-            userInfo: [NSLocalizedDescriptionKey: "StartXrayTunnelWithFd failed invalid handle (fd=\(fd), fdDetail=\(fdDetail), egress=\(egressInterface), bridgeError=\(bridgeError), \(summary))"]
+            userInfo: [
+              NSLocalizedDescriptionKey:
+                "StartXrayTunnelWithFd failed invalid handle (fd=\(fd), fdDetail=\(fdDetail), egress=\(egressInterface), bridgeError=\(bridgeError), \(summary))"
+            ]
           )
         }
         return handle

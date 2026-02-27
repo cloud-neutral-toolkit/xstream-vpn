@@ -36,7 +36,7 @@ If the user is not signed in, it is enough to confirm that the sign-in or landin
 
 ### Tunnel Mode
 
-Use this after `Xstream Secure Tunnel` is connected and the default route is on `utunN`.
+Use this after `Xstream` is connected and the default route is on `utunN`.
 
 Pass evidence:
 

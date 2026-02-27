@@ -48,7 +48,7 @@ They should not all be treated as the same category of failure.
 
 * `DarwinHostApiImpl` persists the latest startup error to the shared app-group defaults so Flutter can query and present actionable guidance.
 * Packet Tunnel provider failures are logged with the `plus.svc.xstream` subsystem and mirrored into the shared status store when startup or rollback fails.
-* The current macOS UI now checks for authorization-related failures such as `permission denied` and opens a permissions guide that directs the user to approve the System VPN / Packet Tunnel request for `Xstream Secure Tunnel`.
+* The current macOS UI now checks for authorization-related failures such as `permission denied` and opens a permissions guide that directs the user to approve the System VPN / Packet Tunnel request for `Xstream`.
 * Restart and recovery behavior is currently conservative: the tunnel is stopped on startup failure and the user is expected to retry after fixing authorization, signing, configuration, or runtime issues.
 * Missing or invalid Packet Tunnel fd handoff is treated as a provider startup failure, because Packet Tunnel is the only permitted system-level entry point on Apple platforms.
 

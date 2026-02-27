@@ -21,7 +21,7 @@ Prefer proving the current runtime state with system commands over inferring beh
 
 3. Validate Tunnel Mode control plane.
 - Run `scutil --nc list`.
-- Run `scutil --nc status "Xstream Secure Tunnel"`.
+- Run `scutil --nc status "Xstream"`.
 - Run `route -n get default`.
 - Run `ps -axo pid,ppid,etime,command | rg 'PacketTunnel|xray'`.
 - Interpret results using [`references/macos-baseline.md`](./references/macos-baseline.md).

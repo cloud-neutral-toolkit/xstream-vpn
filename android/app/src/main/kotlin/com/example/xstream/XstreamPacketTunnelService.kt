@@ -58,7 +58,7 @@ class XstreamPacketTunnelService : VpnService() {
             stopTunnel()
 
             val builder = Builder()
-                .setSession("Xstream Secure Tunnel")
+                .setSession("Xstream")
                 .setMtu(mtu)
 
             val ipv4Address = ipv4Addresses.firstOrNull() ?: "10.0.0.2"

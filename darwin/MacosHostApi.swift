@@ -14,6 +14,7 @@ class DarwinHostApiImpl: DarwinHostApi {
   private let profileOptionsKey = "packet_tunnel_profile_options"
   private let statusErrorKey = "packet_tunnel_last_error"
   private let statusStartedAtKey = "packet_tunnel_started_at"
+  private let packetTunnelDisplayName = "Xstream"
 
   private let flutterApi: DarwinFlutterApi?
 
@@ -389,13 +390,13 @@ class DarwinHostApiImpl: DarwinHostApi {
       let manager = NETunnelProviderManager()
       let proto = NETunnelProviderProtocol()
       proto.providerBundleIdentifier = providerId
-      proto.serverAddress = "Xstream Secure Tunnel"
+      proto.serverAddress = self.packetTunnelDisplayName
       proto.providerConfiguration = [
         "options": self.storedPacketTunnelOptions() ?? [:],
       ]
 
       manager.protocolConfiguration = proto
-      manager.localizedDescription = "Xstream Secure Tunnel"
+      manager.localizedDescription = self.packetTunnelDisplayName
       manager.isEnabled = true
 
       manager.saveToPreferences { saveError in
@@ -428,13 +429,13 @@ class DarwinHostApiImpl: DarwinHostApi {
 
     let proto = (manager.protocolConfiguration as? NETunnelProviderProtocol) ?? NETunnelProviderProtocol()
     proto.providerBundleIdentifier = providerId
-    proto.serverAddress = "Xstream Secure Tunnel"
+    proto.serverAddress = self.packetTunnelDisplayName
     proto.providerConfiguration = [
       "options": options,
     ]
 
     manager.protocolConfiguration = proto
-    manager.localizedDescription = "Xstream Secure Tunnel"
+    manager.localizedDescription = self.packetTunnelDisplayName
     manager.isEnabled = true
 
     manager.saveToPreferences { saveError in

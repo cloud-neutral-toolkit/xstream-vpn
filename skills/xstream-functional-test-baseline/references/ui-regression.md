@@ -21,7 +21,7 @@ Validate these flows:
 - Trigger start from the Home screen.
 - Expect success message instead of failure toast.
 - Re-check:
-  `scutil --nc status "Xstream Secure Tunnel"`,
+  `scutil --nc status "Xstream"`,
   `route -n get default`,
   `ps -axo pid,ppid,etime,command | rg 'PacketTunnel|xray'`.
 
@@ -29,7 +29,7 @@ Validate these flows:
 - Trigger stop from the Home screen.
 - Expect active node state to clear.
 - Re-check:
-  `scutil --nc status "Xstream Secure Tunnel"` no longer reports connected.
+  `scutil --nc status "Xstream"` no longer reports connected.
 
 3. Start in Proxy Mode from the node list.
 - Switch to Proxy Mode first.
@@ -105,7 +105,7 @@ After at least one successful start in each mode under test:
 ## Pass Criteria
 
 - UI state, menu state, and system state all agree after each action.
-- Tunnel Mode actions result in `Xstream Secure Tunnel` and `utunN` evidence.
+- Tunnel Mode actions result in `Xstream` and `utunN` evidence.
 - Proxy Mode actions result in `1080/1081` listener evidence and standalone runtime evidence.
 - Reconnect produces a real restart, not only a label refresh.
 - Mode switch does not silently leave the old mode running.

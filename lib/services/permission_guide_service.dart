@@ -149,7 +149,7 @@ class PermissionGuideService {
           passed: false,
           detail: 'Packet Tunnel last error: $lastError',
           suggestion: permissionDenied
-              ? 'Open Privacy & Security, approve System VPN permission for Xstream Secure Tunnel, then retry.'
+              ? 'Open Privacy & Security, approve System VPN permission for Xstream, then retry.'
               : 'Review the Packet Tunnel error details, then retry after fixing authorization or configuration.',
         );
       }

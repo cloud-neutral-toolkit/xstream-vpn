@@ -6,7 +6,7 @@ Use these commands:
 
 ```bash
 scutil --nc list
-scutil --nc status "Xstream Secure Tunnel"
+scutil --nc status "Xstream"
 route -n get default
 ps -axo pid,ppid,etime,command | rg 'PacketTunnel|xray'
 curl -I --max-time 12 https://example.com
@@ -15,7 +15,7 @@ curl -I --max-time 12 https://example.com
 
 Expected pass signals:
 
-- `Xstream Secure Tunnel` is `Connected`.
+- `Xstream` is `Connected`.
 - Competing System VPN entries are `Disconnected`.
 - `scutil --nc status` shows a live `utunN` interface with IPv4 or IPv6 assigned.
 - `route -n get default` points to the same `utunN`.
@@ -49,7 +49,7 @@ curl -I --max-time 12 https://example.com
 
 Expected pass signals:
 
-- `Xstream Secure Tunnel` is not required to be connected.
+- `Xstream` is not required to be connected.
 - Local listeners exist on `127.0.0.1:1080` or `127.0.0.1:1081`.
 - System proxy output matches the active proxy configuration when Xstream manages system proxies.
 - A standalone `xray` runtime process is present when Proxy Mode is active.

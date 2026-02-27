@@ -70,8 +70,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  override func stopTunnel(with _: NEProviderStopReason, completionHandler: @escaping () -> Void) {
-    os_log("PacketTunnelProvider: stopping tunnel", log: tunnelLog, type: .info)
+  override func stopTunnel(with reason: NEProviderStopReason, completionHandler: @escaping () -> Void) {
+    os_log(
+      "PacketTunnelProvider: stopping tunnel (reason=%{public}d)",
+      log: tunnelLog,
+      type: .info,
+      reason.rawValue
+    )
     monitor.cancel()
     engine.stop()
     statusStore.markDisconnected()
@@ -723,6 +728,10 @@ private final class PacketTunnelStatusStore {
   }
 
   func markDisconnected() {
+    let hadConnectedSession = defaults.object(forKey: startedAtKey) != nil
     defaults.removeObject(forKey: startedAtKey)
+    if hadConnectedSession {
+      defaults.removeObject(forKey: errorKey)
+    }
   }
 }

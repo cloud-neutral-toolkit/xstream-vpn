@@ -275,6 +275,35 @@ func main() {
 	)
 
 	s.AddTool(
+		mcp.NewTool("runtime_site_path_check",
+			mcp.WithDescription("Compare the same target URL through the system path and the local SOCKS proxy path to diagnose Tunnel Mode vs Proxy Mode differences."),
+			mcp.WithString("url", mcp.Description("Target URL, for example https://grok.com/")),
+			mcp.WithString("proxy_url", mcp.Description("Proxy URL for comparison, default socks5h://127.0.0.1:1080")),
+			mcp.WithNumber("timeout_seconds", mcp.Description("Curl timeout in seconds, default 15")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			targetURL := strings.TrimSpace(req.GetString("url", ""))
+			if targetURL == "" {
+				return mcp.NewToolResultError(`missing required argument "url"`), nil
+			}
+			proxyURL := strings.TrimSpace(req.GetString("proxy_url", ""))
+			if proxyURL == "" {
+				proxyURL = "socks5h://127.0.0.1:1080"
+			}
+			timeoutSeconds := req.GetInt("timeout_seconds", 15)
+			if timeoutSeconds <= 0 {
+				timeoutSeconds = 15
+			}
+
+			res, err := checkRuntimeSitePaths(ctx, absRoot, targetURL, proxyURL, timeoutSeconds)
+			if err != nil {
+				return jsonResult(map[string]any{"ok": false, "error": err.Error()}, true)
+			}
+			return jsonResult(res, false)
+		},
+	)
+
+	s.AddTool(
 		mcp.NewTool("auth_login",
 			mcp.WithDescription("Call accounts login endpoint and cache token/cookie for sync debugging."),
 			mcp.WithString("username", mcp.Description("Account username")),
@@ -1025,6 +1054,149 @@ func runPostStartInspectFlow(ctx context.Context, root string, waitSeconds, logL
 			"running":          readBoolFromMap(processRes, "running"),
 		},
 	}, nil
+}
+
+func checkRuntimeSitePaths(ctx context.Context, root, targetURL, proxyURL string, timeoutSeconds int) (map[string]any, error) {
+	paths, err := discoverRuntimePaths(root)
+	if err != nil {
+		return nil, err
+	}
+
+	direct := probeURLWithCurl(ctx, root, targetURL, "", timeoutSeconds)
+	proxy := probeURLWithCurl(ctx, root, targetURL, proxyURL, timeoutSeconds)
+
+	classification := classifyProbeDifference(direct, proxy)
+
+	return map[string]any{
+		"ok":              true,
+		"url":             targetURL,
+		"proxy_url":       proxyURL,
+		"paths":           paths,
+		"system_probe":    direct,
+		"proxy_probe":     proxy,
+		"classification":  classification["label"],
+		"recommendation":  classification["recommendation"],
+		"diagnostic_hint": classification["diagnostic_hint"],
+	}, nil
+}
+
+func probeURLWithCurl(ctx context.Context, cwd, targetURL, proxyURL string, timeoutSeconds int) map[string]any {
+	args := []string{
+		"-I",
+		"-sS",
+		"-L",
+		"--max-time", fmt.Sprintf("%d", timeoutSeconds),
+		targetURL,
+	}
+	mode := "system"
+	if proxyURL != "" {
+		mode = "proxy"
+		args = append([]string{
+			"-I",
+			"-sS",
+			"-L",
+			"--proxy", proxyURL,
+			"--max-time", fmt.Sprintf("%d", timeoutSeconds),
+			targetURL,
+		})
+	}
+
+	cmd := runCommand(ctx, cwd, "curl", args...)
+	headerBlock := strings.TrimSpace(cmd.Stdout)
+	statusLine, statusCode := parseHTTPStatus(headerBlock)
+	cfMitigated := extractHeaderValue(headerBlock, "cf-mitigated")
+	serverHeader := extractHeaderValue(headerBlock, "server")
+
+	res := map[string]any{
+		"mode":         mode,
+		"ok":           cmd.OK,
+		"command":      cmd.Command,
+		"status_line":  statusLine,
+		"status_code":  statusCode,
+		"cf_mitigated": cfMitigated,
+		"server":       serverHeader,
+		"headers":      headerBlock,
+		"stderr":       strings.TrimSpace(cmd.Stderr),
+	}
+	if cfMitigated == "challenge" {
+		res["challenge_detected"] = true
+	}
+	return res
+}
+
+func parseHTTPStatus(headers string) (string, int) {
+	lines := strings.Split(strings.ReplaceAll(headers, "\r\n", "\n"), "\n")
+	statusLine := ""
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "HTTP/") {
+			statusLine = line
+		}
+	}
+	if statusLine == "" {
+		return "", 0
+	}
+	re := regexp.MustCompile(`^HTTP/\S+\s+(\d{3})\b`)
+	m := re.FindStringSubmatch(statusLine)
+	if len(m) != 2 {
+		return statusLine, 0
+	}
+	code := 0
+	fmt.Sscanf(m[1], "%d", &code)
+	return statusLine, code
+}
+
+func extractHeaderValue(headers, key string) string {
+	prefix := strings.ToLower(key) + ":"
+	lines := strings.Split(strings.ReplaceAll(headers, "\r\n", "\n"), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(trimmed), prefix) {
+			return strings.TrimSpace(trimmed[len(prefix):])
+		}
+	}
+	return ""
+}
+
+func classifyProbeDifference(systemProbe, proxyProbe map[string]any) map[string]any {
+	systemCode, _ := systemProbe["status_code"].(int)
+	proxyCode, _ := proxyProbe["status_code"].(int)
+	systemChallenge, _ := systemProbe["challenge_detected"].(bool)
+	proxyChallenge, _ := proxyProbe["challenge_detected"].(bool)
+
+	if systemChallenge && proxyCode > 0 && proxyCode < 400 {
+		return map[string]any{
+			"label":           "system-path-challenge-proxy-ok",
+			"recommendation":  "The target is reachable through the local proxy path but is challenged on the system path. This usually indicates Tunnel Mode data-plane semantics differ from Proxy Mode, often around DNS, QUIC/HTTP3, or site-side fingerprinting.",
+			"diagnostic_hint": "Compare Tunnel Mode and Proxy Mode against the same node. If this reproduces only in Tunnel Mode, investigate QUIC/UDP behavior and current outbound transport stability before blaming Packet Tunnel startup.",
+		}
+	}
+	if systemCode >= 400 && proxyCode >= 400 && systemChallenge && proxyChallenge {
+		return map[string]any{
+			"label":           "both-paths-challenged",
+			"recommendation":  "Both the system path and proxy path are being challenged by the target. This points to site-side policy or exit reputation rather than a Tunnel-only regression.",
+			"diagnostic_hint": "Try another node or outbound transport. If the same target still challenges both paths, treat the issue as target-side filtering or exit reputation.",
+		}
+	}
+	if systemCode > 0 && systemCode < 400 && proxyCode > 0 && proxyCode < 400 {
+		return map[string]any{
+			"label":           "both-paths-ok",
+			"recommendation":  "Both the system path and proxy path can reach the target successfully.",
+			"diagnostic_hint": "If the browser still behaves differently, continue with browser-visible checks, especially challenge pages, WebSocket readiness, and authenticated resources.",
+		}
+	}
+	if systemCode == 0 && proxyCode > 0 && proxyCode < 400 {
+		return map[string]any{
+			"label":           "system-path-failed-proxy-ok",
+			"recommendation":  "The system path probe failed while the local proxy path succeeded. This points to a Tunnel Mode specific data-plane issue.",
+			"diagnostic_hint": "Inspect Packet Tunnel route ownership, DNS path, and outbound transport errors in runtime logs. If the node uses xhttp, compare with a tcp+tls node.",
+		}
+	}
+	return map[string]any{
+		"label":           "mixed-or-inconclusive",
+		"recommendation":  "The two probes do not point to a single obvious cause yet.",
+		"diagnostic_hint": "Review headers, curl stderr, runtime log errors, and compare a second node or transport to separate node-specific issues from Tunnel Mode semantics.",
+	}
 }
 
 func errString(err error) string {

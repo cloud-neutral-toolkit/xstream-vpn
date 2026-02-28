@@ -186,6 +186,59 @@ class AppLocalizations {
       'runtimeMcpStarted': 'Runtime MCP Server started',
       'runtimeMcpStopped': 'Runtime MCP Server stopped',
       'runtimeMcpToggleFailed': 'Runtime MCP Server toggle failed',
+      'helpSupportTitle': 'Self-Service Support',
+      'helpSupportIntro':
+          'Use this page to separate Packet Tunnel startup problems from DNS, TLS, site challenge, node transport, and runtime config issues.',
+      'helpOpenRunbook': 'Open Troubleshooting Runbook',
+      'helpQuickCheckTitle': 'Quick Checks',
+      'helpQuickCheckItem1':
+          'If Tunnel Mode and Proxy Mode both fail, check node validity and runtime logs first.',
+      'helpQuickCheckItem2':
+          'If Proxy Mode works but Tunnel Mode fails, prioritize Tunnel data-plane differences instead of Packet Tunnel startup.',
+      'helpQuickCheckItem3':
+          'If DNS resolves and TLS handshake succeeds, the issue is usually not basic host connectivity.',
+      'helpQuickCheckItem4':
+          'If the target returns a challenge page, investigate site-side filtering, current exit reputation, and node transport stability.',
+      'helpModeDiffTitle': 'Tunnel vs Proxy',
+      'helpModeDiffIntro':
+          'Tunnel Mode sends system traffic through Packet Tunnel. Proxy Mode sends browser traffic through local SOCKS/HTTP proxy ports.',
+      'helpModeDiffItem1':
+          'Tunnel Mode may preserve site-facing behavior such as QUIC / HTTP3, system DNS, and challenge-sensitive flows.',
+      'helpModeDiffItem2':
+          'Proxy Mode often falls back to TCP proxy behavior, so some sites can work there first.',
+      'helpModeDiffItem3':
+          'If a site works only in Proxy Mode, compare the same URL through both paths before changing core configuration.',
+      'helpDnsTlsTitle': 'DNS / TLS / Config',
+      'helpDnsTlsIntro':
+          'Check these items before assuming the node or Secure Tunnel is broken.',
+      'helpDnsTlsItem1':
+          'Review DNS settings in Settings and confirm Tunnel DNS values match the expected host-side policy.',
+      'helpDnsTlsItem2':
+          'Inspect runtime config.json to confirm outbound transport, DNS servers, and routing rules are correct.',
+      'helpDnsTlsItem3':
+          'Inspect xray-runtime.log for challenge responses, INTERNAL_ERROR, unexpected EOF, and transport failures.',
+      'helpPathsTitle': 'Local Paths',
+      'helpNodesPathLabel': 'Saved node list',
+      'helpRuntimeConfigLabel': 'Current runtime config',
+      'helpRuntimeLogLabel': 'Current runtime log',
+      'helpOpenConfigDir': 'Open Config Directory',
+      'helpOpenLogsDir': 'Open Logs Directory',
+      'helpLoading': 'Loading...',
+      'helpCommandsTitle': 'Reference Commands',
+      'helpCommandsIntro':
+          'Run these commands in Terminal to compare system path, local proxy path, DNS, TLS, and runtime files.',
+      'helpCommandsBlock':
+          r'''BASE="$HOME/Library/Application Support/plus.svc.xstream"
+
+cat "$BASE/vpn_nodes.json"
+cat "$BASE/configs/config.json"
+tail -n 200 "$BASE/logs/xray-runtime.log"
+
+dig +short grok.com
+echo | openssl s_client -connect grok.com:443 -servername grok.com -brief
+
+curl -I --max-time 15 https://grok.com
+curl -I --proxy socks5h://127.0.0.1:1080 --max-time 15 https://grok.com''',
     },
     'zh': {
       'unlockPrompt': '输入密码解锁',
@@ -363,6 +416,53 @@ class AppLocalizations {
       'runtimeMcpStarted': '运行态 MCP Server 已启动',
       'runtimeMcpStopped': '运行态 MCP Server 已停止',
       'runtimeMcpToggleFailed': '运行态 MCP Server 切换失败',
+      'helpSupportTitle': '自助排查支持',
+      'helpSupportIntro':
+          '本页用于区分 Packet Tunnel 启动问题与 DNS、TLS、站点 challenge、节点传输层、运行时配置等问题。',
+      'helpOpenRunbook': '打开排查手册',
+      'helpQuickCheckTitle': '快速判断',
+      'helpQuickCheckItem1': '如果 Tunnel Mode 和 Proxy Mode 都失败，先检查节点本身与运行日志。',
+      'helpQuickCheckItem2':
+          '如果 Proxy Mode 正常而 Tunnel Mode 失败，优先怀疑 Tunnel 数据面差异，而不是 Packet Tunnel 启动失败。',
+      'helpQuickCheckItem3': '如果 DNS 可解析、TLS 可握手，通常不是基础主机连通性问题。',
+      'helpQuickCheckItem4': '如果目标站点返回 challenge 页面，应优先检查站点侧策略、当前出口信誉和节点传输稳定性。',
+      'helpModeDiffTitle': 'Tunnel 与 Proxy 差异',
+      'helpModeDiffIntro':
+          'Tunnel Mode 通过 Packet Tunnel 接管系统流量，Proxy Mode 则通过本地 SOCKS/HTTP 代理端口转发浏览器流量。',
+      'helpModeDiffItem1':
+          'Tunnel Mode 更可能保留 QUIC / HTTP3、系统 DNS 和对 challenge 更敏感的访问行为。',
+      'helpModeDiffItem2':
+          'Proxy Mode 往往退回到基于 TCP 的代理语义，因此有些站点会先在 Proxy Mode 可用。',
+      'helpModeDiffItem3':
+          '如果站点只在 Proxy Mode 可用，先对比同一 URL 的两条访问路径，再决定是否调整核心配置。',
+      'helpDnsTlsTitle': 'DNS / TLS / 配置文件',
+      'helpDnsTlsIntro': '在判断节点或 Secure Tunnel 故障前，请先检查以下项目。',
+      'helpDnsTlsItem1': '在设置页确认 DNS 配置和 Tunnel DNS 配置符合当前主机侧策略。',
+      'helpDnsTlsItem2':
+          '检查运行时 config.json，确认 outbound 传输、DNS 服务器与 routing 规则是否正确。',
+      'helpDnsTlsItem3':
+          '检查 xray-runtime.log，重点关注 challenge、INTERNAL_ERROR、unexpected EOF 与传输失败。',
+      'helpPathsTitle': '本地路径',
+      'helpNodesPathLabel': '已保存节点列表',
+      'helpRuntimeConfigLabel': '当前运行时配置',
+      'helpRuntimeLogLabel': '当前运行时日志',
+      'helpOpenConfigDir': '打开配置目录',
+      'helpOpenLogsDir': '打开日志目录',
+      'helpLoading': '加载中...',
+      'helpCommandsTitle': '参考命令',
+      'helpCommandsIntro': '可在终端执行这些命令，对比系统路径、本地代理路径、DNS、TLS 与运行时文件。',
+      'helpCommandsBlock':
+          r'''BASE="$HOME/Library/Application Support/plus.svc.xstream"
+
+cat "$BASE/vpn_nodes.json"
+cat "$BASE/configs/config.json"
+tail -n 200 "$BASE/logs/xray-runtime.log"
+
+dig +short grok.com
+echo | openssl s_client -connect grok.com:443 -servername grok.com -brief
+
+curl -I --max-time 15 https://grok.com
+curl -I --proxy socks5h://127.0.0.1:1080 --max-time 15 https://grok.com''',
     },
   };
 

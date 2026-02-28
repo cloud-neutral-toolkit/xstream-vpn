@@ -66,6 +66,7 @@ startup_timeout_sec = 30
 - `runtime_process_check`
 - `runtime_diagnose`
 - `runtime_post_start_inspect`
+- `runtime_site_path_check`
 - `auth_login`
 - `auth_mfa_verify`
 - `auth_sync_pull`
@@ -143,6 +144,44 @@ XSTREAM_MCP_DEBUG=true
 - 进程检查：`runtime_process_check`
 - 一键诊断：`runtime_diagnose`
 - 固定巡检流程（默认等待 30 秒）：`runtime_post_start_inspect`
+- 站点路径对比：`runtime_site_path_check`
+
+`runtime_site_path_check` 适合排查这类问题：
+
+- Tunnel Mode 下目标站点打不开
+- Proxy Mode 下同一站点可以访问
+- 怀疑是站点 challenge、DNS/QUIC 差异，或当前节点传输层不稳定
+
+示例：
+
+```json
+{
+  "url": "https://grok.com/"
+}
+```
+
+该工具会对同一目标分别做：
+
+- 系统路径探测
+- 本地 SOCKS 路径探测（默认 `socks5h://127.0.0.1:1080`）
+
+并返回：
+
+- HTTP 状态行与状态码
+- 是否命中 `cf-mitigated: challenge`
+- 两条路径的差异分类
+- 建议的下一步排查方向
+
+如果结果是：
+
+- 系统路径 challenge
+- 本地代理路径正常
+
+则通常说明：
+
+- Packet Tunnel 控制面已经接管
+- 问题更可能在 Tunnel Mode 的数据面语义差异
+- 常见方向是 DNS、QUIC / HTTP3、当前出口信誉，或 `xhttp` 上游稳定性
 
 Makefile 快捷入口：
 

@@ -1,6 +1,15 @@
-# Unreleased
+# XStream v0.3.0 - Preview Release
+
+_Release Date: 2026-02-28_
+
+## ✨ Features
+- iOS platform support with System VPN integration
+- Apple Packet Tunnel support for System VPN mode on macOS and iOS
+- iOS Packet Tunnel data plane now uses a statically linked `libxray.a` bridge inside the extension process
 
 ## ✅ Changes
+
+- Stripped local SOCKS and HTTP inbounds from iOS Packet Tunnel runtime configs and stop any lingering iOS app-process engine before System VPN startup, avoiding local port conflicts inside the Packet Tunnel extension
 - Switched the iOS Packet Tunnel target to statically link `libxray.a` and call the Go bridge exports directly from the Swift provider, while keeping the macOS bridge path unchanged
 - Reduced iOS System VPN profile churn by saving Packet Tunnel configuration only when the profile changes, while keeping macOS Packet Tunnel save/start behavior unchanged
 - Realigned the iOS Packet Tunnel extension to use the standard Swift principal-class entry path and removed the temporary Objective-C startup probe

@@ -30,6 +30,8 @@ Flutter UI (Dart)
 6. 扩展调用 `setTunnelNetworkSettings(...)` 并解析 `packetFlow` 对应的 TUN fd
 7. 扩展直接调用静态链接的 `libxray.a` 导出符号 `StartXrayTunnelWithFd(...)`
 
+在 iOS Tunnel 模式下，运行时 canonical config 会移除本地 `SOCKS/HTTP` inbound，只保留 `tun` inbound，避免 `PacketTunnel` 扩展与 Host App 的本地端口监听冲突。
+
 ## Secure Tunnel engine 集成
 
 1. 初始化 `libXray` 子模块：

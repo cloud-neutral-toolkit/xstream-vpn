@@ -714,7 +714,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-force_load",
@@ -753,7 +753,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-force_load",
@@ -959,7 +959,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 0.3.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-force_load",

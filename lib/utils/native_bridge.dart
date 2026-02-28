@@ -200,6 +200,7 @@ class NativeBridge {
     if (_isDarwin) {
       _ensureDarwinFlutterApiReady();
       try {
+        await _stopIosLocalEngineIfNeeded();
         final profile = await _buildDefaultTunnelProfile(
           configPath: runtimeConfigPath,
         );
@@ -794,9 +795,10 @@ class NativeBridge {
       final sourceJsonStr = await sourceFile.readAsString();
       final sourceJson = jsonDecode(sourceJsonStr) as Map<String, dynamic>;
 
+      final disableLocalProxyInPacketTunnel = Platform.isIOS && isTunMode;
       final newInboundsStr = VpnConfig.generateInboundsConfig(
-        enableSocksProxy: true,
-        enableHttpProxy: true,
+        enableSocksProxy: !disableLocalProxyInPacketTunnel,
+        enableHttpProxy: !disableLocalProxyInPacketTunnel,
         enableTunnelMode: isTunMode,
       );
       sourceJson['inbounds'] = jsonDecode(newInboundsStr);
@@ -878,6 +880,25 @@ class NativeBridge {
       final running = await checkNodeStatus(candidate.name);
       if (!running) continue;
       await stopNodeService(candidate.name);
+    }
+  }
+
+  static Future<void> _stopIosLocalEngineIfNeeded() async {
+    if (!Platform.isIOS) return;
+
+    try {
+      final result = stopXray().trim().toLowerCase();
+      if (result.startsWith('success')) {
+        addAppLog(
+          'iOS local engine stopped before Packet Tunnel startup',
+          level: LogLevel.info,
+        );
+      }
+    } catch (_) {
+      // Ignore cleanup failures here. Packet Tunnel startup will report the
+      // real runtime error if anything is still wrong.
+    } finally {
+      _mobileActiveNodeName = null;
     }
   }
 
@@ -990,6 +1011,7 @@ class NativeBridge {
     if (!_isDarwin) return '当前平台暂不支持';
     _ensureDarwinFlutterApiReady();
     try {
+      await _stopIosLocalEngineIfNeeded();
       final configPath = await _resolveTunnelConfigPath();
       if (configPath == null) {
         return '未找到可用的节点配置';
@@ -1173,7 +1195,7 @@ class NativeBridge {
       return _darwinHostApi.savePacketTunnelProfile(profile);
     }
 
-    final signature = _serializeTunnelProfile(profile);
+    final signature = await _serializeTunnelProfile(profile);
     final prefs = await SharedPreferences.getInstance();
     final savedSignature = prefs.getString(_iosTunnelProfileSignatureKey);
 
@@ -1188,7 +1210,20 @@ class NativeBridge {
     return result;
   }
 
-  static String _serializeTunnelProfile(darwin_host.TunnelProfile profile) {
+  static Future<String> _serializeTunnelProfile(
+    darwin_host.TunnelProfile profile,
+  ) async {
+    String? configFingerprint;
+    final configPath = profile.configPath.trim();
+    if (configPath.isNotEmpty) {
+      try {
+        final bytes = await File(configPath).readAsBytes();
+        configFingerprint = base64Encode(bytes);
+      } catch (_) {
+        configFingerprint = 'missing';
+      }
+    }
+
     return jsonEncode({
       'mtu': profile.mtu,
       'tun46Setting': profile.tun46Setting,
@@ -1232,6 +1267,7 @@ class NativeBridge {
           )
           .toList(),
       'configPath': profile.configPath,
+      'configFingerprint': configFingerprint,
     });
   }
 

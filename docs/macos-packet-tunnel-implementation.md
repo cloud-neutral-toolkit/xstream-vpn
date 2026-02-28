@@ -315,15 +315,31 @@ NETunnelProviderManager
 10. read config bytes from `options["config"]`
 11. sanitize Darwin tun inbound fields
 12. call `engine.start(config:fd:fdDetail:egressInterface:)`
-13. `markConnected()`
+13. start metrics snapshot sampling for the resolved `utunX`
+14. `markConnected()`
 
 If any step after `setTunnelNetworkSettings()` fails:
 
 - stop engine
+- stop metrics sampling
 - cancel path monitor
 - clear `activeSettings`
 - write failure state
 - fail `startTunnel`
+
+### 5.1.1 Home monitoring snapshot
+
+On macOS, the Packet Tunnel extension also writes a compact latest-value snapshot into the
+shared App Group state for the Home monitoring cards:
+
+1. `PacketTunnelMetricsSampler` reads interface byte counters from the active `utunX`.
+2. It samples resident memory from the extension process.
+3. It writes `downloadBytesPerSecond`, `uploadBytesPerSecond`, `memoryBytes`, and `updatedAt`
+   into `packet_tunnel_metrics_snapshot`.
+4. `darwin/MacosHostApi.swift` reads that snapshot and Flutter Home renders it without changing
+   the startup or stop control path.
+
+CPU remains optional and can stay empty when there is no low-risk sampler.
 
 ### 5.2 Network settings that are applied
 

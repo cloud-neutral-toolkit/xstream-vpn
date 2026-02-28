@@ -120,11 +120,11 @@ This keeps the iOS Secure Tunnel data plane fully inside the `PacketTunnel` exte
 - `packet_tunnel_profile_options`
 - `packet_tunnel_last_error`
 - `packet_tunnel_started_at`
-- `packet_tunnel_metrics_snapshot` (iOS home monitoring only)
+- `packet_tunnel_metrics_snapshot`
 
-### 6.1 iOS home monitoring snapshot
+### 6.1 Darwin home monitoring snapshot
 
-To keep the control plane stable, iOS home monitoring uses a one-way snapshot path:
+To keep the control plane stable, Apple home monitoring uses a one-way snapshot path:
 
 1. `PacketTunnelProvider` samples tunnel runtime data inside the extension process.
 2. The provider writes a compact latest-value snapshot into App Group shared state.
@@ -145,7 +145,7 @@ Recommended snapshot fields:
 - `cpuPercent`
 - `updatedAt`
 
-Latency stays on the existing Flutter-side probe path. CPU may remain unavailable on iOS until there is a stable and low-risk sampling method.
+Latency stays on the existing Flutter-side probe path. CPU may remain unavailable on iOS or macOS until there is a stable and low-risk sampling method.
 
 ## 7) Build Verification Baseline
 

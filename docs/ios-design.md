@@ -103,15 +103,15 @@ PacketTunnelProvider
 3. `lib/utils/native_bridge.dart`
    - 只负责把 Host App 返回的快照转换为 Flutter 可用对象
 4. `lib/screens/home_screen.dart`
-   - 只消费现有延迟与 iOS 监控快照
+   - 只消费现有延迟与 Darwin 监控快照
    - 仅更新首页监控卡片区域的视觉与展示顺序
-   - macOS 共用同一组新卡片 UI，但不额外改动 macOS 采样实现
+   - macOS 共用同一组新卡片 UI，并通过 `PacketTunnelProvider` 写入同一份 App Group 快照
 
 ### 共享状态约束
 
 - 快照必须落在 App Group 共享容器，不能依赖主 App 私有沙盒
 - 快照必须是覆盖式最新值，而不是累积日志
-- 快照更新频率保持轻量高频，当前 iOS 基线为约 `500ms`
+- 快照更新频率保持轻量高频，当前 Darwin 基线为约 `500ms`
 - 快照字段应保持窄接口，优先包含：
   - `downloadBytesPerSecond`
   - `uploadBytesPerSecond`
@@ -138,8 +138,8 @@ PacketTunnelProvider
 
 - 不需要把 Host App 和 `PacketTunnelProvider` 做成强耦合双向通道
 - 不需要修改 Secure Tunnel 启动链路
-- 不需要把其它平台一起拉进实时采集重构
-- 能先补齐 iOS 首页最重要的监控信息，再视需要扩展更完整的 runtime stats
+- 不需要把其它页面或连接主流程一起拉进实时采集重构
+- 能先补齐 Apple Packet Tunnel 首页最重要的监控信息，再视需要扩展更完整的 runtime stats
 
 ## 平台差异
 

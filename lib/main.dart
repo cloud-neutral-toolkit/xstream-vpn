@@ -82,6 +82,16 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   static const double _mobileBreakpoint = 900;
   int _currentIndex = 0;
 
+  bool _isMobileLayout(BuildContext context) {
+    final isPhonePlatform = Platform.isIOS || Platform.isAndroid;
+    return isPhonePlatform &&
+        MediaQuery.of(context).size.width < _mobileBreakpoint;
+  }
+
+  int _settingsIndex(BuildContext context) => _isMobileLayout(context) ? 3 : 2;
+
+  int _logsIndex(BuildContext context) => _isMobileLayout(context) ? 3 : 3;
+
   @override
   void initState() {
     super.initState();
@@ -185,7 +195,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         break;
       case _AddNodeMenuAction.pickFile:
         if (mounted) {
-          setState(() => _currentIndex = 2);
+          setState(() => _currentIndex = _settingsIndex(context));
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(context.l10n.get('openSettingsImportHint'))),
           );
@@ -346,7 +356,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         break;
       case 'openLogs':
         if (mounted) {
-          setState(() => _currentIndex = 3);
+          setState(() => _currentIndex = _logsIndex(context));
         }
         break;
       case 'editRules':
@@ -472,10 +482,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         label: Text(context.l10n.get('proxy')),
       ),
       _NavigationDestination(
-        icon: const Icon(Icons.article),
-        label: Text(context.l10n.get('logs')),
-      ),
-      _NavigationDestination(
         icon: const Icon(Icons.account_circle),
         label: Text(context.l10n.get('accountLogin')),
       ),
@@ -487,14 +493,21 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   }
 
   String _currentPageTitle(BuildContext context) {
-    final labels = [
-      context.l10n.get('home'),
-      context.l10n.get('proxy'),
-      context.l10n.get('settings'),
-      context.l10n.get('logs'),
-      context.l10n.get('help'),
-      context.l10n.get('about'),
-    ];
+    final labels = _isMobileLayout(context)
+        ? [
+            context.l10n.get('home'),
+            context.l10n.get('proxy'),
+            context.l10n.get('accountLogin'),
+            context.l10n.get('settings'),
+          ]
+        : [
+            context.l10n.get('home'),
+            context.l10n.get('proxy'),
+            context.l10n.get('settings'),
+            context.l10n.get('logs'),
+            context.l10n.get('help'),
+            context.l10n.get('about'),
+          ];
     return labels[_currentIndex.clamp(0, labels.length - 1)];
   }
 
@@ -550,7 +563,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     final mobilePages = <Widget>[
       const HomeScreen(),
       const SubscriptionScreen(),
-      const LogsScreen(),
       const LoginScreen(),
       const SettingsScreen(),
     ];

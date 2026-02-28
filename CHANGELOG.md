@@ -25,6 +25,7 @@ _Release Date: 2026-02-28_
 - Added repo-local `xstream-ios-real-device-smoke` skill with executable iPhone smoke script, baseline, test cases, and latest report
 - Added iOS `RunnerTests` Packet Tunnel start/stop smoke coverage and test-host fixes for real-device execution
 - Updated the iOS host app startup to use Flutter's implicit engine registration path so Release builds can register plugins and native Packet Tunnel channels without crashing at launch
+- Simplified iPhone navigation to `Home / Proxy / Account / Settings` and moved `Logs`, `Help`, and `About` into Settings so support and release information remain reachable without expanding the bottom bar
 - Allowed iOS node import to generate sandbox config files without requiring a desktop sudo password, while keeping desktop service generation rules unchanged
 - Improved iOS Packet Tunnel diagnostics to clear stale session timestamps before new starts and surface the system VPN's last disconnect error during status checks
 - Recorded current iPhone Packet Tunnel smoke blocker and next-step checklist in `docs/ios-packet-tunnel-real-device-followup.md`

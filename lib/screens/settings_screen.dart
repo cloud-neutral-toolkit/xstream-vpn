@@ -21,6 +21,9 @@ import '../../services/sync/desktop_sync_service.dart';
 import '../../services/sync/sync_state.dart';
 import '../../services/mcp/runtime_mcp_service.dart';
 import '../../utils/app_logger.dart';
+import '../screens/about_screen.dart';
+import '../screens/help_screen.dart';
+import '../screens/logs_screen.dart';
 import '../widgets/permission_guide_dialog.dart';
 import '../widgets/log_console.dart' show LogLevel;
 
@@ -131,6 +134,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ? ' (${status.utunInterfaces.join(', ')})'
         : '';
     return '${context.l10n.get('tunStatus')}: $label$utun';
+  }
+
+  Future<void> _openHelpPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HelpScreen()),
+    );
+  }
+
+  Future<void> _openAboutPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AboutScreen()),
+    );
+  }
+
+  Future<void> _openLogsPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LogsScreen()),
+    );
   }
 
   Future<void> _handleLogin() async {
@@ -1053,6 +1074,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: Text(context.l10n.get('checkUpdate')),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: _onCheckUpdate,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: const Icon(Icons.article_outlined),
+                    title: Text(context.l10n.get('logs')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _openLogsPage,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: const Icon(Icons.help_outline),
+                    title: Text(context.l10n.get('help')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _openHelpPage,
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  ListTile(
+                    leading: const Icon(Icons.info_outline),
+                    title: Text(context.l10n.get('about')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _openAboutPage,
                   ),
                 ],
               ),

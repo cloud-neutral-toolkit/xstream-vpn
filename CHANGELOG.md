@@ -1,6 +1,7 @@
 # Unreleased
 
 ## ✅ Changes
+- Switched the iOS Packet Tunnel target to statically link `libxray.a` and call the Go bridge exports directly from the Swift provider, while keeping the macOS bridge path unchanged
 - Reduced iOS System VPN profile churn by saving Packet Tunnel configuration only when the profile changes, while keeping macOS Packet Tunnel save/start behavior unchanged
 - Realigned the iOS Packet Tunnel extension to use the standard Swift principal-class entry path and removed the temporary Objective-C startup probe
 - Moved iOS Packet Tunnel runtime config into the App Group shared container so the host app and Packet Tunnel extension use the same System VPN runtime path

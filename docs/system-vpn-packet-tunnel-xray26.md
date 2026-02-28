@@ -41,7 +41,7 @@ Declared in `bindings/bridge.h` and exported in `go_core/bridge_ios.go`:
 - `FreeXrayTunnel(long long handle) -> char*`
 - `FreeCString(char* str) -> void`
 
-`PacketTunnelProvider` resolves these symbols dynamically through `dlsym` in `XrayTunnelBridge`.
+On iOS, `PacketTunnelProvider` links these symbols statically from `build/ios/libxray.a` and calls them directly through the PacketTunnel bridging header. macOS keeps its existing dynamic bridge path.
 
 ## 3) Binding Points
 
@@ -77,6 +77,17 @@ Key components:
 10. Status is persisted and emitted back to Flutter with `TunnelStatus`.
 
 There is no separate Darwin startup path that launches the tunnel engine without the Packet Tunnel fd. If fd handoff fails, provider startup fails and reports that error back through the shared status path.
+
+### 4.1 iOS static-link baseline
+
+For iOS only:
+
+1. `build_scripts/build_ios_xray.sh` builds `build/ios/libxray.a`
+2. `PacketTunnel` target runs this script during Xcode build
+3. `PacketTunnel.appex` force-loads `libxray.a`
+4. `PacketTunnelProvider` calls the bridge exports directly after `setTunnelNetworkSettings(...)`
+
+This keeps the iOS Secure Tunnel data plane fully inside the `PacketTunnel` extension process and avoids runtime `dylib` discovery in the extension.
 
 ## 5) Failure Rollback Path
 

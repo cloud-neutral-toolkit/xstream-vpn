@@ -1,1 +1,1 @@
-#import "bridge.h"
+#import "../../bindings/bridge.h"

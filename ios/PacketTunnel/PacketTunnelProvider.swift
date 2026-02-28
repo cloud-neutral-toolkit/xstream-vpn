@@ -596,50 +596,8 @@ private final class XrayTunnelEngine: SecureTunnelEngine {
 }
 
 private final class XrayTunnelBridge {
-  private typealias StartXrayTunnelWithFdFn =
-    @convention(c) (UnsafePointer<CChar>?, Int32, UnsafePointer<CChar>?) -> Int64
-  private typealias StopXrayTunnelFn = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
-  private typealias FreeXrayTunnelFn = @convention(c) (Int64) -> UnsafeMutablePointer<CChar>?
-  private typealias FreeCStringFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
-  private typealias GetLastXrayTunnelErrorFn = @convention(c) () -> UnsafeMutablePointer<CChar>?
-
-  private let startFn: StartXrayTunnelWithFdFn?
-  private let stopFn: StopXrayTunnelFn?
-  private let freeTunnelFn: FreeXrayTunnelFn?
-  private let freeCStringFn: FreeCStringFn?
-  private let getLastErrorFn: GetLastXrayTunnelErrorFn?
-  private let dlHandle: UnsafeMutableRawPointer?
-  private let loadError: String?
-
-  init() {
-    let loaded = XrayTunnelBridge.openBridgeHandle()
-    dlHandle = loaded.handle
-    loadError = loaded.error
-    startFn = XrayTunnelBridge.loadSymbol("StartXrayTunnelWithFd", from: dlHandle)
-    stopFn = XrayTunnelBridge.loadSymbol("StopXrayTunnel", from: dlHandle)
-    freeTunnelFn = XrayTunnelBridge.loadSymbol("FreeXrayTunnel", from: dlHandle)
-    freeCStringFn = XrayTunnelBridge.loadSymbol("FreeCString", from: dlHandle)
-    getLastErrorFn = XrayTunnelBridge.loadSymbol("GetLastXrayTunnelError", from: dlHandle)
-  }
-
-  deinit {
-    if let dlHandle {
-      dlclose(dlHandle)
-    }
-  }
-
   func start(configData: Data, fd: Int32, fdDetail: String, egressInterface: String) throws -> Int64
   {
-    guard let startFn else {
-      let message = loadError ?? "failed to load bridge symbols"
-      throw NSError(
-        domain: "Xstream.PacketTunnel",
-        code: -11,
-        userInfo: [
-          NSLocalizedDescriptionKey: "StartXrayTunnelWithFd symbol unavailable (\(message))"
-        ]
-      )
-    }
     guard fd >= 0 else {
       let summary = summarizeConfig(configData)
       throw NSError(
@@ -654,7 +612,7 @@ private final class XrayTunnelBridge {
     let json = String(data: configData, encoding: .utf8) ?? "{}"
     return try json.withCString { cstr in
       return try egressInterface.withCString { ifaceCstr in
-        let handle = startFn(cstr, fd, ifaceCstr)
+        let handle = StartXrayTunnelWithFd(cstr, fd, ifaceCstr)
         if handle <= 0 {
           let bridgeError = readBridgeError()
           let summary = summarizeConfig(configData)
@@ -673,18 +631,12 @@ private final class XrayTunnelBridge {
   }
 
   func stop(handle: Int64) {
-    guard let stopFn else {
-      return
-    }
-    let message = stopFn(handle)
+    let message = StopXrayTunnel(handle)
     releaseCString(message)
   }
 
   func free(handle: Int64) {
-    guard let freeTunnelFn else {
-      return
-    }
-    let message = freeTunnelFn(handle)
+    let message = FreeXrayTunnel(handle)
     releaseCString(message)
   }
 
@@ -692,18 +644,11 @@ private final class XrayTunnelBridge {
     guard let ptr else {
       return
     }
-    if let freeCStringFn {
-      freeCStringFn(ptr)
-    } else {
-      Darwin.free(ptr)
-    }
+    FreeCString(ptr)
   }
 
   private func readBridgeError() -> String {
-    guard let getLastErrorFn else {
-      return "GetLastXrayTunnelError unavailable"
-    }
-    let ptr = getLastErrorFn()
+    let ptr = GetLastXrayTunnelError()
     defer { releaseCString(ptr) }
     guard let ptr else {
       return "empty"
@@ -735,37 +680,6 @@ private final class XrayTunnelBridge {
       return "configBytes=\(data.count), tunInbounds=0"
     }
     return "configBytes=\(data.count), \(tunSummaries.joined(separator: ";"))"
-  }
-
-  private static func loadSymbol<T>(_ name: String, from handle: UnsafeMutableRawPointer?) -> T? {
-    guard let handle, let symbol = dlsym(handle, name) else {
-      return nil
-    }
-    return unsafeBitCast(symbol, to: T.self)
-  }
-
-  private static func openBridgeHandle() -> (handle: UnsafeMutableRawPointer?, error: String?) {
-    let candidates = [
-      "@rpath/libxray_bridge.dylib",
-      "\(Bundle.main.bundlePath)/Contents/Frameworks/libxray_bridge.dylib",
-      "\(Bundle.main.bundlePath)/Frameworks/libxray_bridge.dylib",
-    ]
-
-    var errors: [String] = []
-    for path in candidates {
-      if let handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL) {
-        return (handle, nil)
-      }
-      let err = dlerror().map { String(cString: $0) } ?? "unknown error"
-      errors.append("\(path): \(err)")
-    }
-
-    if let handle = dlopen(nil, RTLD_NOW | RTLD_GLOBAL) {
-      return (handle, "fallback to process image; explicit bridge dylib not found")
-    }
-    let fallbackErr = dlerror().map { String(cString: $0) } ?? "unknown error"
-    errors.append("dlopen(nil): \(fallbackErr)")
-    return (nil, errors.joined(separator: " | "))
   }
 }
 

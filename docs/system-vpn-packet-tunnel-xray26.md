@@ -145,7 +145,7 @@ Recommended snapshot fields:
 - `cpuPercent`
 - `updatedAt`
 
-Latency stays on the Flutter-side active-connection probe path and is rendered in milliseconds on the Home cards. macOS now samples extension-process CPU from the Packet Tunnel runtime snapshot, while iOS CPU may remain unavailable until there is a stable and low-risk sampling method.
+Latency stays on the Flutter-side active-connection probe path and is rendered in milliseconds on the Home cards. Both macOS and iOS now sample extension-process CPU from the Packet Tunnel runtime snapshot and continue to expose download, upload, memory, and update time through the same App Group path.
 
 ## 7) Build Verification Baseline
 

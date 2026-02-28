@@ -118,7 +118,7 @@ PacketTunnelProvider
   - `memoryBytes`
   - `cpuPercent`
   - `updatedAt`
-- 延迟不写入这条快照，继续沿用 Flutter 侧现有节点延迟结果
+- 延迟不写入这条快照，继续沿用 Flutter 侧活跃连接毫秒探测结果
 
 当前快照 key：
 
@@ -147,6 +147,15 @@ PacketTunnelProvider
 - macOS：保留现有的 `PacketTunnelProvider + dynamic bridge` 路径
 
 这意味着 iOS 与 macOS 在 Secure Tunnel engine 装载方式上不同，但 Flutter UI 与 Darwin 控制面保持一致。
+
+当前 iOS `PacketTunnelProvider` 会直接在扩展进程内采样：
+
+- 下载速率
+- 上传速率
+- 内存
+- CPU 使用率
+
+首页延迟卡仍由 Flutter Home 侧定期测量当前活跃连接并以毫秒展示。
 
 ## 构建验证
 

@@ -25,6 +25,7 @@ Core APIs:
 - `startPacketTunnel()`
 - `stopPacketTunnel()`
 - `getPacketTunnelStatus()`
+- `getPacketTunnelMetrics()`
 
 Status callbacks:
 
@@ -119,6 +120,32 @@ This keeps the iOS Secure Tunnel data plane fully inside the `PacketTunnel` exte
 - `packet_tunnel_profile_options`
 - `packet_tunnel_last_error`
 - `packet_tunnel_started_at`
+- `packet_tunnel_metrics_snapshot` (iOS home monitoring only)
+
+### 6.1 iOS home monitoring snapshot
+
+To keep the control plane stable, iOS home monitoring uses a one-way snapshot path:
+
+1. `PacketTunnelProvider` samples tunnel runtime data inside the extension process.
+2. The provider writes a compact latest-value snapshot into App Group shared state.
+3. Darwin Host bridge reads that snapshot.
+4. Flutter Home screen uses the snapshot only for the monitoring card area.
+
+This path is intentionally narrow:
+
+- It does not change `NETunnelProviderManager` startup semantics.
+- It does not add a new local proxy or sidecar process.
+- It does not require Flutter UI to know about extension internals.
+
+Recommended snapshot fields:
+
+- `downloadBytesPerSecond`
+- `uploadBytesPerSecond`
+- `memoryBytes`
+- `cpuPercent`
+- `updatedAt`
+
+Latency stays on the existing Flutter-side probe path. CPU may remain unavailable on iOS until there is a stable and low-risk sampling method.
 
 ## 7) Build Verification Baseline
 

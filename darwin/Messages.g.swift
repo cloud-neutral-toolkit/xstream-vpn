@@ -220,6 +220,42 @@ struct TunnelStatus {
   }
 }
 
+/// Generated class from Pigeon that represents data sent in messages.
+struct TunnelMetricsSnapshot {
+  var downloadBytesPerSecond: Int64? = nil
+  var uploadBytesPerSecond: Int64? = nil
+  var memoryBytes: Int64? = nil
+  var cpuPercent: Double? = nil
+  var updatedAt: Int64? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> TunnelMetricsSnapshot? {
+    let downloadBytesPerSecond: Int64? = nilOrValue(pigeonVar_list[0])
+    let uploadBytesPerSecond: Int64? = nilOrValue(pigeonVar_list[1])
+    let memoryBytes: Int64? = nilOrValue(pigeonVar_list[2])
+    let cpuPercent: Double? = nilOrValue(pigeonVar_list[3])
+    let updatedAt: Int64? = nilOrValue(pigeonVar_list[4])
+
+    return TunnelMetricsSnapshot(
+      downloadBytesPerSecond: downloadBytesPerSecond,
+      uploadBytesPerSecond: uploadBytesPerSecond,
+      memoryBytes: memoryBytes,
+      cpuPercent: cpuPercent,
+      updatedAt: updatedAt
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      downloadBytesPerSecond,
+      uploadBytesPerSecond,
+      memoryBytes,
+      cpuPercent,
+      updatedAt,
+    ]
+  }
+}
+
 private class MessagesPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
@@ -231,6 +267,8 @@ private class MessagesPigeonCodecReader: FlutterStandardReader {
       return TunnelProfile.fromList(self.readValue() as! [Any?])
     case 132:
       return TunnelStatus.fromList(self.readValue() as! [Any?])
+    case 133:
+      return TunnelMetricsSnapshot.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
     }
@@ -250,6 +288,9 @@ private class MessagesPigeonCodecWriter: FlutterStandardWriter {
       super.writeValue(value.toList())
     } else if let value = value as? TunnelStatus {
       super.writeByte(132)
+      super.writeValue(value.toList())
+    } else if let value = value as? TunnelMetricsSnapshot {
+      super.writeByte(133)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
@@ -283,6 +324,7 @@ protocol DarwinHostApi {
   func startPacketTunnel(completion: @escaping (Result<Void, Error>) -> Void)
   func stopPacketTunnel(completion: @escaping (Result<Void, Error>) -> Void)
   func getPacketTunnelStatus(completion: @escaping (Result<TunnelStatus, Error>) -> Void)
+  func getPacketTunnelMetrics(completion: @escaping (Result<TunnelMetricsSnapshot, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -425,6 +467,21 @@ class DarwinHostApiSetup {
       }
     } else {
       getPacketTunnelStatusChannel.setMessageHandler(nil)
+    }
+    let getPacketTunnelMetricsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.xstream.DarwinHostApi.getPacketTunnelMetrics\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      getPacketTunnelMetricsChannel.setMessageHandler { _, reply in
+        api.getPacketTunnelMetrics { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      getPacketTunnelMetricsChannel.setMessageHandler(nil)
     }
   }
 }

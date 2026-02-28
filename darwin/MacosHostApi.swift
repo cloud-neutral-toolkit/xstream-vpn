@@ -15,6 +15,7 @@ class DarwinHostApiImpl: DarwinHostApi {
   private let profileOptionsKey = "packet_tunnel_profile_options"
   private let statusErrorKey = "packet_tunnel_last_error"
   private let statusStartedAtKey = "packet_tunnel_started_at"
+  private let metricsSnapshotKey = "packet_tunnel_metrics_snapshot"
   private let packetTunnelDisplayName = "Xstream"
 
   private let flutterApi: DarwinFlutterApi?
@@ -365,8 +366,54 @@ class DarwinHostApiImpl: DarwinHostApi {
     }
   }
 
+  func getPacketTunnelMetrics(
+    completion: @escaping (Result<TunnelMetricsSnapshot, Error>) -> Void
+  ) {
+    let snapshot = readPacketTunnelMetricsSnapshot()
+    completion(.success(snapshot))
+  }
+
   private func sharedDefaults() -> UserDefaults {
     UserDefaults(suiteName: groupId) ?? .standard
+  }
+
+  private func readPacketTunnelMetricsSnapshot() -> TunnelMetricsSnapshot {
+    guard let raw = sharedDefaults().dictionary(forKey: metricsSnapshotKey) else {
+      return TunnelMetricsSnapshot()
+    }
+    return TunnelMetricsSnapshot(
+      downloadBytesPerSecond: integerValue(raw["downloadBytesPerSecond"]),
+      uploadBytesPerSecond: integerValue(raw["uploadBytesPerSecond"]),
+      memoryBytes: integerValue(raw["memoryBytes"]),
+      cpuPercent: doubleValue(raw["cpuPercent"]),
+      updatedAt: integerValue(raw["updatedAt"])
+    )
+  }
+
+  private func integerValue(_ raw: Any?) -> Int64? {
+    switch raw {
+    case let value as NSNumber:
+      return value.int64Value
+    case let value as Int64:
+      return value
+    case let value as Int:
+      return Int64(value)
+    default:
+      return nil
+    }
+  }
+
+  private func doubleValue(_ raw: Any?) -> Double? {
+    switch raw {
+    case let value as NSNumber:
+      return value.doubleValue
+    case let value as Double:
+      return value
+    case let value as Float:
+      return Double(value)
+    default:
+      return nil
+    }
   }
 
   private func storedPacketTunnelOptions() -> [String: NSObject]? {

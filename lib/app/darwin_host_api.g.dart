@@ -200,6 +200,47 @@ class TunnelStatus {
   }
 }
 
+class TunnelMetricsSnapshot {
+  TunnelMetricsSnapshot({
+    this.downloadBytesPerSecond,
+    this.uploadBytesPerSecond,
+    this.memoryBytes,
+    this.cpuPercent,
+    this.updatedAt,
+  });
+
+  int? downloadBytesPerSecond;
+
+  int? uploadBytesPerSecond;
+
+  int? memoryBytes;
+
+  double? cpuPercent;
+
+  int? updatedAt;
+
+  Object encode() {
+    return <Object?>[
+      downloadBytesPerSecond,
+      uploadBytesPerSecond,
+      memoryBytes,
+      cpuPercent,
+      updatedAt,
+    ];
+  }
+
+  static TunnelMetricsSnapshot decode(Object result) {
+    result as List<Object?>;
+    return TunnelMetricsSnapshot(
+      downloadBytesPerSecond: result[0] as int?,
+      uploadBytesPerSecond: result[1] as int?,
+      memoryBytes: result[2] as int?,
+      cpuPercent: result[3] as double?,
+      updatedAt: result[4] as int?,
+    );
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -219,6 +260,9 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is TunnelStatus) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
+    } else if (value is TunnelMetricsSnapshot) {
+      buffer.putUint8(133);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -235,6 +279,8 @@ class _PigeonCodec extends StandardMessageCodec {
         return TunnelProfile.decode(readValue(buffer)!);
       case 132:
         return TunnelStatus.decode(readValue(buffer)!);
+      case 133:
+        return TunnelMetricsSnapshot.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -489,6 +535,35 @@ class DarwinHostApi {
       );
     } else {
       return (pigeonVar_replyList[0] as TunnelStatus?)!;
+    }
+  }
+
+  Future<TunnelMetricsSnapshot> getPacketTunnelMetrics() async {
+    final String pigeonVar_channelName =
+        'dev.flutter.pigeon.xstream.DarwinHostApi.getPacketTunnelMetrics$pigeonVar_messageChannelSuffix';
+    final BasicMessageChannel<Object?> pigeonVar_channel =
+        BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final List<Object?>? pigeonVar_replyList =
+        await pigeonVar_channel.send(null) as List<Object?>?;
+    if (pigeonVar_replyList == null) {
+      throw _createConnectionError(pigeonVar_channelName);
+    } else if (pigeonVar_replyList.length > 1) {
+      throw PlatformException(
+        code: pigeonVar_replyList[0]! as String,
+        message: pigeonVar_replyList[1] as String?,
+        details: pigeonVar_replyList[2],
+      );
+    } else if (pigeonVar_replyList[0] == null) {
+      throw PlatformException(
+        code: 'null-error',
+        message: 'Host platform returned null value for non-null return value.',
+      );
+    } else {
+      return (pigeonVar_replyList[0] as TunnelMetricsSnapshot?)!;
     }
   }
 }

@@ -56,6 +56,7 @@ class NativeBridge {
     status: 'unsupported',
     utunInterfaces: [],
   );
+  static const _tunMetricsFallback = PacketTunnelMetricsSnapshot();
 
   static BridgeBindings get _ffi {
     _bindings ??= _useFfi
@@ -1116,6 +1117,33 @@ class NativeBridge {
     }
   }
 
+  static Future<PacketTunnelMetricsSnapshot> getPacketTunnelMetrics() async {
+    if (!_isDarwin) return _tunMetricsFallback;
+    _ensureDarwinFlutterApiReady();
+    try {
+      final snapshot = await _darwinHostApi.getPacketTunnelMetrics();
+      return PacketTunnelMetricsSnapshot(
+        downloadBytesPerSecond: snapshot.downloadBytesPerSecond,
+        uploadBytesPerSecond: snapshot.uploadBytesPerSecond,
+        memoryBytes: snapshot.memoryBytes,
+        cpuPercent: snapshot.cpuPercent,
+        updatedAt: snapshot.updatedAt,
+      );
+    } on MissingPluginException {
+      addAppLog(
+        'Packet Tunnel metrics query unavailable: DarwinHostApi channel missing',
+        level: LogLevel.error,
+      );
+      return _tunMetricsFallback;
+    } catch (e) {
+      addAppLog(
+        'Packet Tunnel metrics query failed: $e',
+        level: LogLevel.error,
+      );
+      return _tunMetricsFallback;
+    }
+  }
+
   static Future<String> _waitForDarwinPacketTunnelConnected({
     required String successMessage,
     Duration timeout = const Duration(seconds: 12),
@@ -1351,4 +1379,20 @@ class PacketTunnelStatus {
       startedAt: startedAt,
     );
   }
+}
+
+class PacketTunnelMetricsSnapshot {
+  final int? downloadBytesPerSecond;
+  final int? uploadBytesPerSecond;
+  final int? memoryBytes;
+  final double? cpuPercent;
+  final int? updatedAt;
+
+  const PacketTunnelMetricsSnapshot({
+    this.downloadBytesPerSecond,
+    this.uploadBytesPerSecond,
+    this.memoryBytes,
+    this.cpuPercent,
+    this.updatedAt,
+  });
 }

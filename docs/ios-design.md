@@ -62,6 +62,85 @@ Flutter UI (Dart)
 - 运行时配置文件与状态落在 App Group 共享容器
 - `packet_tunnel_last_error`、`packet_tunnel_started_at` 等状态由扩展侧维护
 
+## iOS 首页监控最小实现
+
+本节记录 iOS 首页“监控卡片区域”的最小补全方案。目标是只补一条轻量监控快照链路，不改现有 Flutter 页面结构，不改连接主流程，不改其它页面。
+
+### 设计边界
+
+- 仅作用于 iOS
+- 仅补首页监控卡片所需的数据
+- Host App 仍然只负责配置、启动和停止 System VPN
+- `PacketTunnelProvider` 仍然是唯一的数据面入口
+- 不引入新的本地代理端口，不改变 Secure Tunnel 启动方式
+
+### 最小数据链路
+
+```text
+PacketTunnelProvider
+  -> App Group shared state snapshot
+  -> Darwin Host bridge
+  -> Flutter Home screen metrics cards
+```
+
+### 指标范围
+
+- 下载速率：真数据，由 `PacketTunnel` 扩展周期性写入快照
+- 上传速率：真数据，由 `PacketTunnel` 扩展周期性写入快照
+- 内存：真数据，由 `PacketTunnel` 扩展进程自身采样并写入快照
+- 延迟：继续复用首页现有延迟结果，不额外改变现有探测逻辑
+- CPU：若暂无稳定 iOS 采样口，则首页显示占位值 `--`
+
+### 责任划分
+
+1. `ios/PacketTunnel/PacketTunnelProvider.swift`
+   - 只在扩展进程内采样下载、上传、内存
+   - 将最新快照写入 App Group 共享状态
+   - 不直接驱动 Flutter UI
+2. `darwin/MacosHostApi.swift`
+   - 通过 `getPacketTunnelMetrics()` 读取共享快照并映射为 Host App 可消费的数据结构
+   - 不承担采样逻辑
+3. `lib/utils/native_bridge.dart`
+   - 只负责把 Host App 返回的快照转换为 Flutter 可用对象
+4. `lib/screens/home_screen.dart`
+   - 只消费现有延迟与 iOS 监控快照
+   - 仅更新首页监控卡片区域的视觉与展示顺序
+   - macOS 共用同一组新卡片 UI，但不额外改动 macOS 采样实现
+
+### 共享状态约束
+
+- 快照必须落在 App Group 共享容器，不能依赖主 App 私有沙盒
+- 快照必须是覆盖式最新值，而不是累积日志
+- 快照更新频率保持轻量高频，当前 iOS 基线为约 `500ms`
+- 快照字段应保持窄接口，优先包含：
+  - `downloadBytesPerSecond`
+  - `uploadBytesPerSecond`
+  - `memoryBytes`
+  - `cpuPercent`
+  - `updatedAt`
+- 延迟不写入这条快照，继续沿用 Flutter 侧现有节点延迟结果
+
+当前快照 key：
+
+- `packet_tunnel_metrics_snapshot`
+
+### UI 约束
+
+- 不改首页节点列表交互
+- 不改其它页面
+- 不改现有连接按钮与业务动作
+- 首页监控卡片只做展示层重排：
+  - 第一行主卡：下载为主、上传为辅
+  - 第二行：延迟、CPU
+  - 第三行：内存薄卡
+
+### 为什么采用这条最小方案
+
+- 不需要把 Host App 和 `PacketTunnelProvider` 做成强耦合双向通道
+- 不需要修改 Secure Tunnel 启动链路
+- 不需要把其它平台一起拉进实时采集重构
+- 能先补齐 iOS 首页最重要的监控信息，再视需要扩展更完整的 runtime stats
+
 ## 平台差异
 
 - iOS：`PacketTunnelProvider + libxray.a`

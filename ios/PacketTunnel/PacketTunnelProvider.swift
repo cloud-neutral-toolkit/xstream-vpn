@@ -18,6 +18,7 @@ let tunnelLog = OSLog(subsystem: "plus.svc.xstream", category: "PacketTunnel")
 public final class PacketTunnelProvider: NEPacketTunnelProvider {
   private var activeSettings: NEPacketTunnelNetworkSettings?
   private lazy var statusStore = PacketTunnelStatusStore()
+  private lazy var metricsSampler = PacketTunnelMetricsSampler()
   private var monitor: NWPathMonitor?
   private lazy var engine: SecureTunnelEngine = XrayTunnelEngine()
 
@@ -26,6 +27,7 @@ public final class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping (Error?) -> Void
   ) {
     os_log("PacketTunnelProvider: starting tunnel", log: tunnelLog, type: .info)
+    metricsSampler.stop()
     do {
       let map = try resolveOptions(options: options)
       let enableIPv6 = shouldEnableIPv6(options: map, launchOptions: options)
@@ -41,6 +43,7 @@ public final class PacketTunnelProvider: NEPacketTunnelProvider {
           os_log(
             "PacketTunnelProvider: setTunnelNetworkSettings failed: %{public}@", log: tunnelLog,
             type: .error, error.localizedDescription)
+          self.metricsSampler.stop()
           self.statusStore.markFailed(error.localizedDescription)
           completionHandler(error)
           return
@@ -68,6 +71,7 @@ public final class PacketTunnelProvider: NEPacketTunnelProvider {
             fdDetail: resolvedTun.detail,
             egressInterface: egressInterface
           )
+          self.metricsSampler.start(interfaceName: resolvedTun.interfaceName)
           self.statusStore.markConnected()
           os_log("PacketTunnelProvider: Engine started successfully", log: tunnelLog, type: .info)
           completionHandler(nil)
@@ -82,6 +86,7 @@ public final class PacketTunnelProvider: NEPacketTunnelProvider {
       os_log(
         "PacketTunnelProvider: startTunnel exception: %{public}@", log: tunnelLog, type: .error,
         error.localizedDescription)
+      metricsSampler.stop()
       statusStore.markFailed(error.localizedDescription)
       completionHandler(error)
     }
@@ -96,6 +101,7 @@ public final class PacketTunnelProvider: NEPacketTunnelProvider {
       type: .info,
       reason.rawValue
     )
+    metricsSampler.stop()
     monitor?.cancel()
     monitor = nil
     engine.stop()
@@ -547,6 +553,7 @@ public final class PacketTunnelProvider: NEPacketTunnelProvider {
     error: Error,
     completionHandler: @escaping (Error?) -> Void
   ) {
+    metricsSampler.stop()
     engine.stop()
     monitor?.cancel()
     monitor = nil
@@ -680,6 +687,191 @@ private final class XrayTunnelBridge {
       return "configBytes=\(data.count), tunInbounds=0"
     }
     return "configBytes=\(data.count), \(tunSummaries.joined(separator: ";"))"
+  }
+}
+
+private final class PacketTunnelMetricsSampler {
+  private let queue = DispatchQueue(label: "plus.svc.xstream.PacketTunnel.metrics")
+  private let store = PacketTunnelMetricsSnapshotStore()
+  private var timer: DispatchSourceTimer?
+  private var lastSample: InterfaceCounters?
+
+  func start(interfaceName: String?) {
+    stop()
+    guard let interfaceName = normalizeInterfaceName(interfaceName) else {
+      store.write(
+        downloadBytesPerSecond: nil,
+        uploadBytesPerSecond: nil,
+        memoryBytes: currentMemoryBytes(),
+        cpuPercent: nil
+      )
+      return
+    }
+
+    let initialTimestamp = Date().timeIntervalSince1970
+    lastSample = readCounters(interfaceName: interfaceName, timestamp: initialTimestamp)
+    store.write(
+      downloadBytesPerSecond: 0,
+      uploadBytesPerSecond: 0,
+      memoryBytes: currentMemoryBytes(),
+      cpuPercent: nil
+    )
+
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now() + .milliseconds(300), repeating: .milliseconds(500))
+    timer.setEventHandler { [weak self] in
+      self?.captureSnapshot(interfaceName: interfaceName)
+    }
+    self.timer = timer
+    timer.resume()
+  }
+
+  func stop() {
+    timer?.setEventHandler {}
+    timer?.cancel()
+    timer = nil
+    lastSample = nil
+    store.clear()
+  }
+
+  private func captureSnapshot(interfaceName: String) {
+    let timestamp = Date().timeIntervalSince1970
+    let memoryBytes = currentMemoryBytes()
+    guard let current = readCounters(interfaceName: interfaceName, timestamp: timestamp) else {
+      store.write(
+        downloadBytesPerSecond: nil,
+        uploadBytesPerSecond: nil,
+        memoryBytes: memoryBytes,
+        cpuPercent: nil
+      )
+      lastSample = nil
+      return
+    }
+
+    let elapsed = max(timestamp - (lastSample?.timestamp ?? timestamp), 0.5)
+    let downloadBytesPerSecond: Int64?
+    let uploadBytesPerSecond: Int64?
+    if let previous = lastSample {
+      let downDelta =
+        current.receivedBytes >= previous.receivedBytes
+        ? current.receivedBytes - previous.receivedBytes : 0
+      let upDelta =
+        current.sentBytes >= previous.sentBytes
+        ? current.sentBytes - previous.sentBytes : 0
+      downloadBytesPerSecond = Int64(Double(downDelta) / elapsed)
+      uploadBytesPerSecond = Int64(Double(upDelta) / elapsed)
+    } else {
+      downloadBytesPerSecond = nil
+      uploadBytesPerSecond = nil
+    }
+
+    lastSample = current
+    store.write(
+      downloadBytesPerSecond: downloadBytesPerSecond,
+      uploadBytesPerSecond: uploadBytesPerSecond,
+      memoryBytes: memoryBytes,
+      cpuPercent: nil
+    )
+  }
+
+  private func normalizeInterfaceName(_ raw: String?) -> String? {
+    guard let raw else {
+      return nil
+    }
+    let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard normalized.range(of: #"^utun[0-9]+$"#, options: .regularExpression) != nil else {
+      return nil
+    }
+    return normalized
+  }
+
+  private func readCounters(interfaceName: String, timestamp: TimeInterval) -> InterfaceCounters? {
+    var addressPointer: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&addressPointer) == 0, let firstAddress = addressPointer else {
+      return nil
+    }
+    defer { freeifaddrs(addressPointer) }
+
+    var pointer = firstAddress
+    while true {
+      let address = pointer.pointee
+      let name = String(cString: address.ifa_name)
+      if name == interfaceName,
+        let rawData = address.ifa_data,
+        let rawAddress = address.ifa_addr,
+        rawAddress.pointee.sa_family == UInt8(AF_LINK)
+      {
+        let data = rawData.assumingMemoryBound(to: if_data.self).pointee
+        return InterfaceCounters(
+          receivedBytes: UInt64(data.ifi_ibytes),
+          sentBytes: UInt64(data.ifi_obytes),
+          timestamp: timestamp
+        )
+      }
+
+      guard let next = address.ifa_next else {
+        break
+      }
+      pointer = next
+    }
+    return nil
+  }
+
+  private func currentMemoryBytes() -> Int64? {
+    var info = mach_task_basic_info()
+    var count = mach_msg_type_number_t(
+      MemoryLayout<mach_task_basic_info_data_t>.size
+        / MemoryLayout<
+          integer_t
+        >.size)
+    let result = withUnsafeMutablePointer(to: &info) { pointer in
+      pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+        task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), rebound, &count)
+      }
+    }
+    guard result == KERN_SUCCESS else {
+      return nil
+    }
+    return Int64(info.resident_size)
+  }
+
+  private struct InterfaceCounters {
+    let receivedBytes: UInt64
+    let sentBytes: UInt64
+    let timestamp: TimeInterval
+  }
+}
+
+private final class PacketTunnelMetricsSnapshotStore {
+  private let defaults = UserDefaults(suiteName: "group.plus.svc.xstream") ?? .standard
+  private let snapshotKey = "packet_tunnel_metrics_snapshot"
+
+  func write(
+    downloadBytesPerSecond: Int64?,
+    uploadBytesPerSecond: Int64?,
+    memoryBytes: Int64?,
+    cpuPercent: Double?
+  ) {
+    var snapshot: [String: Any] = [
+      "updatedAt": Int64(Date().timeIntervalSince1970 * 1000)
+    ]
+    if let downloadBytesPerSecond {
+      snapshot["downloadBytesPerSecond"] = NSNumber(value: downloadBytesPerSecond)
+    }
+    if let uploadBytesPerSecond {
+      snapshot["uploadBytesPerSecond"] = NSNumber(value: uploadBytesPerSecond)
+    }
+    if let memoryBytes {
+      snapshot["memoryBytes"] = NSNumber(value: memoryBytes)
+    }
+    if let cpuPercent {
+      snapshot["cpuPercent"] = NSNumber(value: cpuPercent)
+    }
+    defaults.set(snapshot, forKey: snapshotKey)
+  }
+
+  func clear() {
+    defaults.removeObject(forKey: snapshotKey)
   }
 }
 

@@ -76,6 +76,22 @@ class TunnelStatus {
   int? startedAt;
 }
 
+class TunnelMetricsSnapshot {
+  TunnelMetricsSnapshot({
+    this.downloadBytesPerSecond,
+    this.uploadBytesPerSecond,
+    this.memoryBytes,
+    this.cpuPercent,
+    this.updatedAt,
+  });
+
+  int? downloadBytesPerSecond;
+  int? uploadBytesPerSecond;
+  int? memoryBytes;
+  double? cpuPercent;
+  int? updatedAt;
+}
+
 @HostApi()
 abstract class DarwinHostApi {
   String appGroupPath();
@@ -101,6 +117,9 @@ abstract class DarwinHostApi {
 
   @async
   TunnelStatus getPacketTunnelStatus();
+
+  @async
+  TunnelMetricsSnapshot getPacketTunnelMetrics();
 }
 
 @FlutterApi()

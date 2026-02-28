@@ -17,7 +17,20 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _LatencyVisual {
+  final String value;
+  final String label;
+  final Color color;
+
+  const _LatencyVisual({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+}
+
 class _HomeScreenState extends State<HomeScreen> {
+  static const _emptyMetricValue = '— —';
   String _activeNode = '';
   String _selectedNode = '';
   String _hoveredNode = '';
@@ -27,8 +40,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, int> _latencyByNode = {};
   DateTime? _connectedAt;
   Timer? _durationTimer;
+  Timer? _metricsTimer;
   Duration _connectedDuration = Duration.zero;
   String _connectedLocation = '-';
+  PacketTunnelMetricsSnapshot _packetTunnelMetrics =
+      const PacketTunnelMetricsSnapshot();
 
   void _showMessage(String msg, {Color? bgColor}) {
     if (!mounted) return;
@@ -43,11 +59,13 @@ class _HomeScreenState extends State<HomeScreen> {
     GlobalState.nodeListRevision.addListener(_onNodeListRevisionChanged);
     GlobalState.activeNodeName.addListener(_onActiveNodeChanged);
     _initializeConfig();
+    _startMetricsPolling();
   }
 
   @override
   void dispose() {
     _durationTimer?.cancel();
+    _metricsTimer?.cancel();
     GlobalState.nodeListRevision.removeListener(_onNodeListRevisionChanged);
     GlobalState.activeNodeName.removeListener(_onActiveNodeChanged);
     super.dispose();
@@ -129,6 +147,30 @@ class _HomeScreenState extends State<HomeScreen> {
     final mins = secs ~/ 60;
     final rem = secs % 60;
     return '$mins m $rem${context.l10n.get('secondsSuffix')}';
+  }
+
+  void _startMetricsPolling() {
+    _metricsTimer?.cancel();
+    unawaited(_refreshPacketTunnelMetrics());
+    _metricsTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      unawaited(_refreshPacketTunnelMetrics());
+    });
+  }
+
+  Future<void> _refreshPacketTunnelMetrics() async {
+    final snapshot = await NativeBridge.getPacketTunnelMetrics();
+    if (!mounted) return;
+    final previous = _packetTunnelMetrics;
+    final changed =
+        previous.downloadBytesPerSecond != snapshot.downloadBytesPerSecond ||
+            previous.uploadBytesPerSecond != snapshot.uploadBytesPerSecond ||
+            previous.memoryBytes != snapshot.memoryBytes ||
+            previous.cpuPercent != snapshot.cpuPercent ||
+            previous.updatedAt != snapshot.updatedAt;
+    if (!changed) return;
+    setState(() {
+      _packetTunnelMetrics = snapshot;
+    });
   }
 
   void _scheduleClearHighlight() {
@@ -321,195 +363,342 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMobileHeroCard(BuildContext context) {
+  PacketTunnelMetricsSnapshot get _visibleMetrics {
+    final updatedAt = _packetTunnelMetrics.updatedAt;
+    if (_activeNode.isEmpty || updatedAt == null) {
+      return const PacketTunnelMetricsSnapshot();
+    }
+    final age = DateTime.now().millisecondsSinceEpoch - updatedAt;
+    if (age > 4500) {
+      return const PacketTunnelMetricsSnapshot();
+    }
+    return _packetTunnelMetrics;
+  }
+
+  String _formatRate(int? bytesPerSecond) {
+    if (bytesPerSecond == null || bytesPerSecond < 0) {
+      return _emptyMetricValue;
+    }
+    final value = bytesPerSecond.toDouble();
+    if (value >= 1024 * 1024) {
+      final mb = value / (1024 * 1024);
+      final digits = mb >= 10 ? 1 : 2;
+      return '${mb.toStringAsFixed(digits)} MB/s';
+    }
+    final kb = value / 1024;
+    final digits = kb >= 100 ? 0 : 1;
+    return '${kb.toStringAsFixed(digits)} KB/s';
+  }
+
+  String _formatMemory(int? memoryBytes) {
+    if (memoryBytes == null || memoryBytes < 0) {
+      return _emptyMetricValue;
+    }
+    final mb = memoryBytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(0)} MB';
+  }
+
+  String _formatCpu(double? cpuPercent) {
+    if (cpuPercent == null || cpuPercent.isNaN) {
+      return _emptyMetricValue;
+    }
+    return '${cpuPercent.toStringAsFixed(0)}%';
+  }
+
+  _LatencyVisual _latencyVisual(BuildContext context, int? latency) {
+    if (latency == null || latency < 0) {
+      return const _LatencyVisual(
+        value: _emptyMetricValue,
+        label: _emptyMetricValue,
+        color: Color(0xFFB8BDC7),
+      );
+    }
+    if (latency < 50) {
+      return _LatencyVisual(
+        value: '${latency}ms',
+        label: context.l10n.get('homeStatusGood'),
+        color: const Color(0xFF3E8F5A),
+      );
+    }
+    if (latency <= 200) {
+      return _LatencyVisual(
+        value: '${latency}ms',
+        label: context.l10n.get('homeStatusFair'),
+        color: const Color(0xFFBF8A3A),
+      );
+    }
+    return _LatencyVisual(
+      value: '${latency}ms',
+      label: context.l10n.get('homeStatusHigh'),
+      color: const Color(0xFFC3655C),
+    );
+  }
+
+  Widget _buildMetricValue(
+    String value,
+    TextStyle style, {
+    TextAlign textAlign = TextAlign.left,
+  }) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final offsetAnimation = Tween<Offset>(
+          begin: const Offset(0, 0.08),
+          end: Offset.zero,
+        ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: offsetAnimation, child: child),
+        );
+      },
+      child: Text(
+        value,
+        key: ValueKey(value),
+        textAlign: textAlign,
+        style: style,
+      ),
+    );
+  }
+
+  Widget _buildMonitoringCard({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(18),
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      padding: padding,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE9EBEF)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x11000000),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildMetricBadge(IconData icon, Color color) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(17),
+      ),
+      child: Icon(icon, size: 18, color: color),
+    );
+  }
+
+  Widget _buildMonitoringDashboard(BuildContext context) {
+    final metrics = _visibleMetrics;
+    final latency = _latencyVisual(
+      context,
+      _activeNode.isEmpty ? null : _latencyByNode[_activeNode],
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricCard(
-                icon: Icons.arrow_upward,
-                iconColor: Colors.pinkAccent,
-                title: context.l10n.get('homeStatusUpload'),
-                value: '--',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildMetricCard(
-                icon: Icons.arrow_downward,
-                iconColor: Colors.blueAccent,
-                title: context.l10n.get('homeStatusDownload'),
-                value: '--',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _buildMetricCard(
-                icon: Icons.memory,
-                iconColor: Colors.purpleAccent,
-                title: context.l10n.get('homeStatusMemory'),
-                value: '--',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildMetricCard(
-                icon: Icons.route,
-                iconColor: Colors.greenAccent,
-                title: context.l10n.get('homeStatusConnections'),
-                value: '--',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F7FA),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-          ),
+        _buildMonitoringCard(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.dns_outlined,
-                      size: 20, color: Color(0xFF4A6572)),
-                  const SizedBox(width: 8),
+                  _buildMetricBadge(
+                    Icons.south_rounded,
+                    const Color(0xFF5677C8),
+                  ),
+                  const SizedBox(width: 12),
                   Text(
-                    context.l10n.get('nodeList'),
+                    context.l10n.get('homeStatusDownload'),
                     style: const TextStyle(
-                      color: Color(0xFF4A6572),
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
+                      color: Color(0xFF707784),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              if (vpnNodes.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Column(
+              const SizedBox(height: 18),
+              _buildMetricValue(
+                _formatRate(metrics.downloadBytesPerSecond),
+                const TextStyle(
+                  fontSize: 34,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF232833),
+                  letterSpacing: -0.8,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.north_rounded,
+                    size: 16,
+                    color: Color(0xFFB26079),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _buildMetricValue(
+                      '${context.l10n.get('homeStatusUpload')} ${_formatRate(metrics.uploadBytesPerSecond)}',
+                      const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF7A8090),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMonitoringCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Icon(
-                          Icons.add_circle_outline_rounded,
-                          size: 36,
-                          color: Colors.grey.withValues(alpha: 0.45),
+                        _buildMetricBadge(
+                          Icons.network_ping_rounded,
+                          latency.color,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(width: 10),
                         Text(
-                          context.l10n.get('addNodeHint'),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.withValues(alpha: 0.7),
-                            height: 1.5,
+                          context.l10n.get('homeStatusLatency'),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF707784),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                )
-              else
-                SizedBox(
-                  height: 110,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: vpnNodes.length,
-                    itemBuilder: (context, index) {
-                      final node = vpnNodes[index];
-                      final isActive = _activeNode == node.name;
-                      final isSelected = _selectedNode == node.name;
-                      final latency = _latencyByNode[node.name];
-                      final isUnlocked = GlobalState.isUnlocked.value;
-
-                      return GestureDetector(
-                        onTap: (isUnlocked && !_isSwitchingNode)
-                            ? () => _selectNode(node)
-                            : null,
-                        child: Container(
-                          width: 160,
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.all(14),
+                    const SizedBox(height: 14),
+                    _buildMetricValue(
+                      latency.value,
+                      TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: latency.color,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
-                            color: isActive
-                                ? const Color(0xFFE8F5E9)
-                                : (isSelected
-                                    ? const Color(0xFFE3F2FD)
-                                    : Colors.white),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isActive
-                                  ? Colors.green.withValues(alpha: 0.5)
-                                  : (isSelected
-                                      ? Colors.blue.withValues(alpha: 0.5)
-                                      : Colors.grey.withValues(alpha: 0.2)),
-                              width: (isActive || isSelected) ? 2 : 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      node.name,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: isActive
-                                            ? Colors.green[800]
-                                            : const Color(0xFF222222),
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  if (isActive)
-                                    const Icon(Icons.check_circle,
-                                        color: Colors.green, size: 18),
-                                ],
-                              ),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF5F7FA),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.speed,
-                                        size: 12, color: Colors.grey),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      latency != null ? '${latency}ms' : '--',
-                                      style: const TextStyle(
-                                          fontSize: 12, color: Colors.grey),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            color: latency.color,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                      );
-                    },
+                        const SizedBox(width: 8),
+                        Text(
+                          latency.label,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF7A8090),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildMonitoringCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _buildMetricBadge(
+                          Icons.developer_mode_outlined,
+                          const Color(0xFF75809A),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          context.l10n.get('homeStatusCpu'),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF707784),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    _buildMetricValue(
+                      _formatCpu(metrics.cpuPercent),
+                      const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF232833),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      _emptyMetricValue,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFFB8BDC7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildMonitoringCard(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
+            children: [
+              _buildMetricBadge(
+                Icons.memory_rounded,
+                const Color(0xFF8B74BA),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  context.l10n.get('homeStatusMemory'),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF707784),
                   ),
                 ),
+              ),
+              _buildMetricValue(
+                _formatMemory(metrics.memoryBytes),
+                const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF667085),
+                ),
+              ),
             ],
           ),
         ),
@@ -517,17 +706,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMetricCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String value,
-  }) {
+  Widget _buildMobileNodeListPanel(BuildContext context, bool isUnlocked) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFFF5F7FA),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
       ),
       child: Column(
@@ -535,34 +719,235 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 16, color: iconColor),
+              const Icon(
+                Icons.dns_outlined,
+                size: 20,
+                color: Color(0xFF4A6572),
               ),
               const SizedBox(width: 8),
               Text(
-                title,
+                context.l10n.get('nodeList'),
                 style: const TextStyle(
-                  color: Color(0xFF666666),
+                  color: Color(0xFF4A6572),
                   fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: iconColor,
+          if (vpnNodes.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.add_circle_outline_rounded,
+                      size: 36,
+                      color: Colors.grey.withValues(alpha: 0.45),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      context.l10n.get('addNodeHint'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.withValues(alpha: 0.7),
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: 110,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: vpnNodes.length,
+                itemBuilder: (context, index) {
+                  final node = vpnNodes[index];
+                  final isActive = _activeNode == node.name;
+                  final isSelected = _selectedNode == node.name;
+                  final latency = _latencyByNode[node.name];
+
+                  return GestureDetector(
+                    onTap: (isUnlocked && !_isSwitchingNode)
+                        ? () => _selectNode(node)
+                        : null,
+                    child: Container(
+                      width: 160,
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? const Color(0xFFE8F5E9)
+                            : (isSelected
+                                ? const Color(0xFFE3F2FD)
+                                : Colors.white),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isActive
+                              ? Colors.green.withValues(alpha: 0.5)
+                              : (isSelected
+                                  ? Colors.blue.withValues(alpha: 0.5)
+                                  : Colors.grey.withValues(alpha: 0.2)),
+                          width: (isActive || isSelected) ? 2 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  node.name,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: isActive
+                                        ? Colors.green[800]
+                                        : const Color(0xFF222222),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isActive)
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green,
+                                  size: 18,
+                                ),
+                            ],
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5F7FA),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.speed,
+                                  size: 12,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  latency != null ? '${latency}ms' : '--',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopNodeListPanel(BuildContext context, bool isUnlocked) {
+    if (vpnNodes.isEmpty) {
+      return Center(child: Text(context.l10n.get('noNodes')));
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FB),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE9EBEF)),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: vpnNodes.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final node = vpnNodes[index];
+          final isActive = _activeNode == node.name;
+          final isSelected = _selectedNode == node.name;
+          final isHighlighted = _highlightNode == node.name || isSelected;
+          final bgColor = isActive
+              ? const Color(0xFFC8E6C9)
+              : (isHighlighted ? const Color(0xFFCFE6FF) : Colors.transparent);
+          final latency = _latencyByNode[node.name];
+          final tags = <String>[
+            node.protocol.trim().toLowerCase(),
+            node.transport.trim().toLowerCase(),
+            node.security.trim().toLowerCase(),
+          ].where((e) => e.isNotEmpty).toList();
+
+          return MouseRegion(
+            onEnter: (_) => setState(() {
+              _hoveredNode = node.name;
+              _selectedNode = node.name;
+              _highlightNode = node.name;
+            }),
+            onExit: (_) => setState(() => _hoveredNode = ''),
+            child: InkWell(
+              onTap: (isUnlocked && !_isSwitchingNode)
+                  ? () => _selectNode(node)
+                  : null,
+              child: Container(
+                color: bgColor,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            node.name,
+                            style: const TextStyle(
+                              fontSize: 40 / 1.6,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF222222),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          if (tags.isNotEmpty || latency != null)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                ...tags.map(_buildTag),
+                                if (latency != null) _buildTag('${latency}ms'),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox.shrink(),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -572,84 +957,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return ValueListenableBuilder<bool>(
       valueListenable: GlobalState.isUnlocked,
       builder: (context, isUnlocked, _) {
-        final desktopContent = vpnNodes.isEmpty
-            ? Center(child: Text(context.l10n.get('noNodes')))
-            : ListView.separated(
-                itemCount: vpnNodes.length,
-                padding: const EdgeInsets.fromLTRB(0, 0, 0, 72),
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final node = vpnNodes[index];
-                  final isActive = _activeNode == node.name;
-                  final isSelected = _selectedNode == node.name;
-                  final isHighlighted =
-                      _highlightNode == node.name || isSelected;
-                  final bgColor = isActive
-                      ? const Color(0xFFC8E6C9)
-                      : (isHighlighted
-                          ? const Color(0xFFCFE6FF)
-                          : Colors.transparent);
-                  final latency = _latencyByNode[node.name];
-                  final tags = <String>[
-                    node.protocol.trim().toLowerCase(),
-                    node.transport.trim().toLowerCase(),
-                    node.security.trim().toLowerCase(),
-                  ].where((e) => e.isNotEmpty).toList();
-
-                  return MouseRegion(
-                    onEnter: (_) => setState(() {
-                      _hoveredNode = node.name;
-                      _selectedNode = node.name;
-                      _highlightNode = node.name;
-                    }),
-                    onExit: (_) => setState(() => _hoveredNode = ''),
-                    child: InkWell(
-                      onTap: (isUnlocked && !_isSwitchingNode)
-                          ? () => _selectNode(node)
-                          : null,
-                      child: Container(
-                        color: bgColor,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    node.name,
-                                    style: const TextStyle(
-                                      fontSize: 40 / 1.6,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF222222),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  if (tags.isNotEmpty || latency != null)
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: [
-                                        ...tags.map(_buildTag),
-                                        if (latency != null)
-                                          _buildTag('${latency}ms'),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox.shrink(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
+        final desktopContent = SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildMonitoringDashboard(context),
+              const SizedBox(height: 18),
+              _buildDesktopNodeListPanel(context, isUnlocked),
+            ],
+          ),
+        );
 
         final hoverHint = _hoveredNode.isNotEmpty
             ? '${context.l10n.get('hoverHintSelected')}: $_hoveredNode，'
@@ -667,7 +985,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
-                    child: _buildMobileHeroCard(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildMonitoringDashboard(context),
+                        const SizedBox(height: 16),
+                        _buildMobileNodeListPanel(context, isUnlocked),
+                      ],
+                    ),
                   ),
                   Positioned(
                     right: 24,

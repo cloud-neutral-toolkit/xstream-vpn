@@ -16,13 +16,63 @@ let tunnelLog = OSLog(subsystem: "plus.svc.xstream", category: "PacketTunnel")
   private let utunOptionInterfaceName = UTUN_OPT_IFNAME
 #endif
 
-class PacketTunnelProvider: NEPacketTunnelProvider {
-  private var activeSettings: NEPacketTunnelNetworkSettings?
-  private let monitor = NWPathMonitor(prohibitedInterfaceTypes: [NWInterface.InterfaceType.other])
-  private let statusStore = PacketTunnelStatusStore()
-  private let engine: SecureTunnelEngine = XrayTunnelEngine()
+private let packetTunnelGroupId = "group.plus.svc.xstream"
+private let packetTunnelProbeStageKey = "packet_tunnel_probe_stage"
 
-  override func startTunnel(
+@objc(PacketTunnelProvider)
+public final class PacketTunnelProvider: NEPacketTunnelProvider {
+  public override func startTunnel(
+    options: [String: NSObject]?,
+    completionHandler: @escaping (Error?) -> Void
+  ) {
+    let defaults = UserDefaults(suiteName: packetTunnelGroupId)
+    defaults?.set("probe-startTunnel-entered", forKey: packetTunnelProbeStageKey)
+
+    let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
+    settings.mtu = 1500
+
+    let ipv4 = NEIPv4Settings(addresses: ["10.0.0.2"], subnetMasks: ["255.255.255.0"])
+    ipv4.includedRoutes = [NEIPv4Route.default()]
+    settings.ipv4Settings = ipv4
+
+    let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+    dns.matchDomains = [""]
+    dns.matchDomainsNoSearch = true
+    settings.dnsSettings = dns
+
+    setTunnelNetworkSettings(settings) { error in
+      if let error {
+        defaults?.set(
+          "probe-setTunnelNetworkSettings-error: \(error.localizedDescription)",
+          forKey: "packet_tunnel_last_error"
+        )
+        completionHandler(error)
+        return
+      }
+
+      defaults?.set("probe-setTunnelNetworkSettings-succeeded", forKey: packetTunnelProbeStageKey)
+      defaults?.set(Date().timeIntervalSince1970, forKey: "packet_tunnel_probe_connected_at")
+      completionHandler(nil)
+    }
+  }
+
+  public override func stopTunnel(
+    with reason: NEProviderStopReason,
+    completionHandler: @escaping () -> Void
+  ) {
+    let defaults = UserDefaults(suiteName: packetTunnelGroupId)
+    defaults?.set("probe-stopTunnel-\(reason.rawValue)", forKey: packetTunnelProbeStageKey)
+    completionHandler()
+  }
+}
+
+public final class PacketTunnelImplementation: NEPacketTunnelProvider {
+  private var activeSettings: NEPacketTunnelNetworkSettings?
+  private lazy var statusStore = PacketTunnelStatusStore()
+  private var monitor: NWPathMonitor?
+  private lazy var engine: SecureTunnelEngine = XrayTunnelEngine()
+
+  public override func startTunnel(
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
   ) {
@@ -48,13 +98,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         self.activeSettings = settings
+        self.ensurePathMonitor()
         self.startPathMonitor()
 
         let resolvedFd = self.resolvePacketFlowFileDescriptor()
         let resolvedTun = self.resolveDarwinTunnelHandle(preferredFd: resolvedFd)
         let fd = resolvedTun.fd
         let egressInterface =
-          self.monitor.currentPath.availableInterfaces.first(where: { !$0.name.contains("utun") })?
+          self.monitor?.currentPath.availableInterfaces.first(where: { !$0.name.contains("utun") })?
           .name ?? ""
 
         do {
@@ -87,7 +138,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  override func stopTunnel(
+  public override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
   ) {
     os_log(
@@ -96,9 +147,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       type: .info,
       reason.rawValue
     )
-    monitor.cancel()
+    monitor?.cancel()
+    monitor = nil
     engine.stop()
-    statusStore.markDisconnected()
+    statusStore.markDisconnected(reason: reason)
     completionHandler()
   }
 
@@ -316,6 +368,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   private func startPathMonitor() {
+    guard let monitor else {
+      return
+    }
     monitor.pathUpdateHandler = { path in
       guard path.status == .satisfied else {
         return
@@ -544,10 +599,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping (Error?) -> Void
   ) {
     engine.stop()
-    monitor.cancel()
+    monitor?.cancel()
+    monitor = nil
     activeSettings = nil
     statusStore.markFailed(error.localizedDescription)
     completionHandler(error)
+  }
+
+  private func ensurePathMonitor() {
+    if monitor != nil {
+      return
+    }
+    monitor = NWPathMonitor(prohibitedInterfaceTypes: [NWInterface.InterfaceType.other])
   }
 }
 
@@ -771,11 +834,78 @@ private final class PacketTunnelStatusStore {
     defaults.set(error, forKey: errorKey)
   }
 
-  func markDisconnected() {
+  func markDisconnected(reason: NEProviderStopReason) {
     let hadConnectedSession = defaults.object(forKey: startedAtKey) != nil
     defaults.removeObject(forKey: startedAtKey)
+    let reasonText = describe(reason)
+    let shouldKeepAsFailure = isFailureReason(reason)
+    if shouldKeepAsFailure {
+      defaults.set(
+        "Packet Tunnel stopped (reason=\(reasonText), hadConnectedSession=\(hadConnectedSession))",
+        forKey: errorKey
+      )
+      return
+    }
     if hadConnectedSession {
       defaults.removeObject(forKey: errorKey)
+      return
+    }
+    if defaults.string(forKey: errorKey)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ?? true
+    {
+      defaults.set(
+        "Packet Tunnel stopped before connected (reason=\(reasonText))", forKey: errorKey)
+    }
+  }
+
+  private func describe(_ reason: NEProviderStopReason) -> String {
+    switch reason {
+    case .none:
+      return "none"
+    case .userInitiated:
+      return "userInitiated"
+    case .providerFailed:
+      return "providerFailed"
+    case .noNetworkAvailable:
+      return "noNetworkAvailable"
+    case .unrecoverableNetworkChange:
+      return "unrecoverableNetworkChange"
+    case .providerDisabled:
+      return "providerDisabled"
+    case .authenticationCanceled:
+      return "authenticationCanceled"
+    case .configurationFailed:
+      return "configurationFailed"
+    case .idleTimeout:
+      return "idleTimeout"
+    case .configurationDisabled:
+      return "configurationDisabled"
+    case .configurationRemoved:
+      return "configurationRemoved"
+    case .superceded:
+      return "superceded"
+    case .userLogout:
+      return "userLogout"
+    case .userSwitch:
+      return "userSwitch"
+    case .connectionFailed:
+      return "connectionFailed"
+    case .sleep:
+      return "sleep"
+    case .appUpdate:
+      return "appUpdate"
+    @unknown default:
+      return "unknown-\(reason.rawValue)"
+    }
+  }
+
+  private func isFailureReason(_ reason: NEProviderStopReason) -> Bool {
+    switch reason {
+    case .providerFailed, .noNetworkAvailable, .unrecoverableNetworkChange, .configurationFailed,
+      .connectionFailed:
+      return true
+    default:
+      return false
     }
   }
 }

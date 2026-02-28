@@ -14,8 +14,10 @@ final class RunnerTests: XCTestCase {
     let configPath = try writeSmokeConfig(using: api)
     defer { try? FileManager.default.removeItem(atPath: configPath) }
 
-    let saveResult = try api.savePacketTunnelProfile(
-      profile: makeSmokeProfile(configPath: configPath))
+    let saveResult = try await savePacketTunnelProfile(
+      api,
+      profile: makeSmokeProfile(configPath: configPath)
+    )
     XCTAssertEqual(saveResult, "profile_saved")
 
     try await startPacketTunnel(api)
@@ -167,6 +169,17 @@ final class RunnerTests: XCTestCase {
   private func startPacketTunnel(_ api: DarwinHostApiImpl) async throws {
     try await withCheckedThrowingContinuation { continuation in
       api.startPacketTunnel { result in
+        continuation.resume(with: result)
+      }
+    }
+  }
+
+  private func savePacketTunnelProfile(
+    _ api: DarwinHostApiImpl,
+    profile: TunnelProfile
+  ) async throws -> String {
+    try await withCheckedThrowingContinuation { continuation in
+      api.savePacketTunnelProfile(profile: profile) { result in
         continuation.resume(with: result)
       }
     }

@@ -90,6 +90,7 @@ abstract class DarwinHostApi {
 
   void setupShutdownNotification();
 
+  @async
   String savePacketTunnelProfile(TunnelProfile profile);
 
   @async

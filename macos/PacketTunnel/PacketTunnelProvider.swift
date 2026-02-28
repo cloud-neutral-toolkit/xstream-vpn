@@ -98,7 +98,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     )
     monitor.cancel()
     engine.stop()
-    statusStore.markDisconnected()
+    statusStore.markDisconnected(reason: reason)
     completionHandler()
   }
 
@@ -771,11 +771,78 @@ private final class PacketTunnelStatusStore {
     defaults.set(error, forKey: errorKey)
   }
 
-  func markDisconnected() {
+  func markDisconnected(reason: NEProviderStopReason) {
     let hadConnectedSession = defaults.object(forKey: startedAtKey) != nil
     defaults.removeObject(forKey: startedAtKey)
+    let reasonText = describe(reason)
+    let shouldKeepAsFailure = isFailureReason(reason)
+    if shouldKeepAsFailure {
+      defaults.set(
+        "Packet Tunnel stopped (reason=\(reasonText), hadConnectedSession=\(hadConnectedSession))",
+        forKey: errorKey
+      )
+      return
+    }
     if hadConnectedSession {
       defaults.removeObject(forKey: errorKey)
+      return
+    }
+    if defaults.string(forKey: errorKey)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ?? true
+    {
+      defaults.set(
+        "Packet Tunnel stopped before connected (reason=\(reasonText))", forKey: errorKey)
+    }
+  }
+
+  private func describe(_ reason: NEProviderStopReason) -> String {
+    switch reason {
+    case .none:
+      return "none"
+    case .userInitiated:
+      return "userInitiated"
+    case .providerFailed:
+      return "providerFailed"
+    case .noNetworkAvailable:
+      return "noNetworkAvailable"
+    case .unrecoverableNetworkChange:
+      return "unrecoverableNetworkChange"
+    case .providerDisabled:
+      return "providerDisabled"
+    case .authenticationCanceled:
+      return "authenticationCanceled"
+    case .configurationFailed:
+      return "configurationFailed"
+    case .idleTimeout:
+      return "idleTimeout"
+    case .configurationDisabled:
+      return "configurationDisabled"
+    case .configurationRemoved:
+      return "configurationRemoved"
+    case .superceded:
+      return "superceded"
+    case .userLogout:
+      return "userLogout"
+    case .userSwitch:
+      return "userSwitch"
+    case .connectionFailed:
+      return "connectionFailed"
+    case .sleep:
+      return "sleep"
+    case .appUpdate:
+      return "appUpdate"
+    @unknown default:
+      return "unknown-\(reason.rawValue)"
+    }
+  }
+
+  private func isFailureReason(_ reason: NEProviderStopReason) -> Bool {
+    switch reason {
+    case .providerFailed, .noNetworkAvailable, .unrecoverableNetworkChange, .configurationFailed,
+      .connectionFailed:
+      return true
+    default:
+      return false
     }
   }
 }

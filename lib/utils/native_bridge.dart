@@ -20,6 +20,7 @@ class NativeBridge {
   static Future<void> Function(String action, Map<String, dynamic> payload)?
       _nativeMenuActionHandler;
   static String? _mobileActiveNodeName;
+  static String? _darwinAppGroupPathCache;
 
   static final bool _useFfi = Platform.isWindows ||
       Platform.isLinux ||
@@ -738,6 +739,40 @@ class NativeBridge {
     return null;
   }
 
+  static Future<String> _resolveOrBootstrapIosTunnelConfigPath() async {
+    final resolved = await _resolveTunnelConfigPath();
+    if (resolved != null) {
+      return _prepareCanonicalTunnelConfigPath(
+        resolved,
+        isTunMode: true,
+      );
+    }
+
+    final configsPath = await _darwinTunnelConfigsPath();
+    await Directory(configsPath).create(recursive: true);
+    return '$configsPath/config.json';
+  }
+
+  static Future<String> _darwinTunnelConfigsPath() async {
+    if (!Platform.isIOS) {
+      return GlobalApplicationConfig.getConfigsPath();
+    }
+
+    _ensureDarwinFlutterApiReady();
+    try {
+      final root =
+          _darwinAppGroupPathCache ?? await _darwinHostApi.appGroupPath();
+      _darwinAppGroupPathCache = root;
+      final dir = Directory('$root/configs');
+      await dir.create(recursive: true);
+      return dir.path;
+    } on MissingPluginException {
+      return GlobalApplicationConfig.getConfigsPath();
+    } on PlatformException {
+      return GlobalApplicationConfig.getConfigsPath();
+    }
+  }
+
   static Future<String> _prepareCanonicalTunnelConfigPath(
     String sourcePath, {
     required bool isTunMode,
@@ -747,7 +782,7 @@ class NativeBridge {
     final sourceFile = File(normalized);
     if (!await sourceFile.exists()) return sourcePath;
 
-    final configsPath = await GlobalApplicationConfig.getConfigsPath();
+    final configsPath = await _darwinTunnelConfigsPath();
     final canonicalPath = '$configsPath/config.json';
 
     try {
@@ -892,6 +927,28 @@ class NativeBridge {
     }
   }
 
+  static Future<String> ensureIosSystemVpnProfileRegistered() async {
+    if (!Platform.isIOS) {
+      return '当前平台无需注册 System VPN 配置';
+    }
+
+    _ensureDarwinFlutterApiReady();
+    try {
+      final configPath = await _resolveOrBootstrapIosTunnelConfigPath();
+      final profile = await _buildDefaultTunnelProfile(configPath: configPath);
+      final saveResult = await _darwinHostApi.savePacketTunnelProfile(profile);
+      return saveResult == 'profile_saved'
+          ? 'iOS System VPN 配置已注册到系统列表'
+          : saveResult;
+    } on MissingPluginException {
+      return '插件未实现';
+    } on PlatformException catch (e) {
+      return '注册失败: ${_platformErrorSummary(e)}';
+    } catch (e) {
+      return '注册失败: $e';
+    }
+  }
+
   /// Start Packet Tunnel on Darwin platforms.
   static Future<String> startPacketTunnel() async {
     if (Platform.isAndroid) {
@@ -1030,6 +1087,7 @@ class NativeBridge {
   static Future<String> _waitForDarwinPacketTunnelConnected({
     required String successMessage,
     Duration timeout = const Duration(seconds: 12),
+    bool allowIosProfileRepair = true,
   }) async {
     final deadline = DateTime.now().add(timeout);
     var lastStatus = _tunStatusFallback;
@@ -1045,6 +1103,24 @@ class NativeBridge {
       if ((state == 'disconnected' || state == 'invalid') &&
           error != null &&
           error.isNotEmpty) {
+        if (Platform.isIOS &&
+            allowIosProfileRepair &&
+            _looksLikeIosPluginRegistrationError(error)) {
+          final repairResult = await ensureIosSystemVpnProfileRegistered();
+          addAppLog('iOS System VPN profile repair: $repairResult');
+          try {
+            await _darwinHostApi.startPacketTunnel();
+          } on PlatformException catch (e) {
+            return '启动失败: ${_platformErrorSummary(e)}';
+          } catch (e) {
+            return '启动失败: $e';
+          }
+          return _waitForDarwinPacketTunnelConnected(
+            successMessage: successMessage,
+            timeout: timeout,
+            allowIosProfileRepair: false,
+          );
+        }
         return '启动失败: $error';
       }
 
@@ -1059,6 +1135,24 @@ class NativeBridge {
         ? ''
         : ' (${lastStatus.utunInterfaces.join(", ")})';
     return '启动失败: Packet Tunnel 状态未就绪: ${lastStatus.status}$utunDetail';
+  }
+
+  static bool _looksLikeIosPluginRegistrationError(String error) {
+    final normalized = error.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    if (normalized.contains('domain=nevpnconnectionerrordomain') &&
+        normalized.contains('code=14')) {
+      return true;
+    }
+    if (normalized.contains(
+      'the vpn app used by the vpn configuration is not installed',
+    )) {
+      return true;
+    }
+    if (normalized.contains('needed to be updated')) {
+      return true;
+    }
+    return false;
   }
 
   /// Start embedded xray-core via FFI on iOS

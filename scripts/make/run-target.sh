@@ -186,7 +186,9 @@ run_ios_install() {
     fi
   else
     echo "Installing release build to iOS device: ${device_id}"
-    "$flutter_bin" run -d "$device_id" --release --no-resident
+    "$flutter_bin" build ios --release
+    xcrun devicectl device install app --device "$device_id" build/ios/iphoneos/Runner.app
+    xcrun devicectl device process launch --device "$device_id" --terminate-existing plus.svc.xstream >/dev/null || true
   fi
 }
 

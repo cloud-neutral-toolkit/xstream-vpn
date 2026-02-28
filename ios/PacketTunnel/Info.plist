@@ -4,6 +4,10 @@
 <dict>
   <key>CFBundleIdentifier</key>
   <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key>
+  <string>$(CURRENT_PROJECT_VERSION)</string>
   <key>CFBundleName</key>
   <string>PacketTunnel</string>
   <key>CFBundleDisplayName</key>
@@ -15,7 +19,7 @@
     <key>NSExtensionPointIdentifier</key>
     <string>com.apple.networkextension.packet-tunnel</string>
     <key>NSExtensionPrincipalClass</key>
-    <string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
+    <string>PacketTunnelProvider</string>
   </dict>
 </dict>
 </plist>

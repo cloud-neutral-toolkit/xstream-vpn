@@ -118,30 +118,90 @@ class DarwinHostApiImpl: DarwinHostApi {
     #endif
   }
 
-  func savePacketTunnelProfile(profile: TunnelProfile) throws -> String {
+  func savePacketTunnelProfile(
+    profile: TunnelProfile,
+    completion: @escaping (Result<String, Error>) -> Void
+  ) {
     let defaults = sharedDefaults()
     let options = buildPacketTunnelOptions(profile: profile)
+    let staleManagerHint = readLastError()
     defaults.set(options, forKey: profileOptionsKey)
     defaults.removeObject(forKey: statusErrorKey)
 
     #if os(iOS)
-      do {
-        try registerPacketTunnelManagerForSystemSettings(options: options)
-      } catch {
-        let errorMessage = describeError(error)
-        writeLastError(errorMessage)
-        emitPacketTunnelError(code: "profile-save-failed", message: errorMessage)
-        emitPacketTunnelStateChanged()
-        throw PigeonError(
-          code: "profile-save-failed",
-          message: errorMessage,
-          details: nil
-        )
-      }
-    #endif
+      loadOrCreateTunnelManager(staleManagerHint: staleManagerHint) { manager, error in
+        if let error {
+          let errorMessage = self.describeError(error)
+          self.writeLastError(errorMessage)
+          self.emitPacketTunnelError(code: "profile-save-failed", message: errorMessage)
+          self.emitPacketTunnelStateChanged()
+          completion(
+            .failure(
+              PigeonError(
+                code: "profile-save-failed",
+                message: errorMessage,
+                details: nil
+              )
+            )
+          )
+          return
+        }
 
-    emitPacketTunnelStateChanged()
-    return "profile_saved"
+        guard let manager else {
+          let error = PigeonError(
+            code: "manager-unavailable",
+            message: "No available Packet Tunnel manager",
+            details: nil
+          )
+          let errorMessage = self.describeError(error)
+          self.writeLastError(errorMessage)
+          self.emitPacketTunnelError(code: "profile-save-failed", message: errorMessage)
+          self.emitPacketTunnelStateChanged()
+          completion(.failure(error))
+          return
+        }
+
+        self.prepareManagerWithLatestOptions(manager: manager, options: options) {
+          prepared, prepareError in
+          if let prepareError {
+            let errorMessage = self.describeError(prepareError)
+            self.writeLastError(errorMessage)
+            self.emitPacketTunnelError(code: "profile-save-failed", message: errorMessage)
+            self.emitPacketTunnelStateChanged()
+            completion(
+              .failure(
+                PigeonError(
+                  code: "profile-save-failed",
+                  message: errorMessage,
+                  details: nil
+                )
+              )
+            )
+            return
+          }
+
+          guard prepared != nil else {
+            let error = PigeonError(
+              code: "manager-prepare-failed",
+              message: "Packet Tunnel manager was not prepared",
+              details: nil
+            )
+            let errorMessage = self.describeError(error)
+            self.writeLastError(errorMessage)
+            self.emitPacketTunnelError(code: "profile-save-failed", message: errorMessage)
+            self.emitPacketTunnelStateChanged()
+            completion(.failure(error))
+            return
+          }
+
+          self.emitPacketTunnelStateChanged()
+          completion(.success("profile_saved"))
+        }
+      }
+    #else
+      emitPacketTunnelStateChanged()
+      completion(.success("profile_saved"))
+    #endif
   }
 
   func startPacketTunnel(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -151,8 +211,9 @@ class DarwinHostApiImpl: DarwinHostApi {
         message: "Packet Tunnel profile is missing",
         details: nil
       )
-      writeLastError(error.localizedDescription)
-      emitPacketTunnelError(code: "profile-missing", message: error.localizedDescription)
+      let errorMessage = describeError(error)
+      writeLastError(errorMessage)
+      emitPacketTunnelError(code: "profile-missing", message: errorMessage)
       completion(.failure(error))
       return
     }
@@ -177,7 +238,8 @@ class DarwinHostApiImpl: DarwinHostApi {
       }
     }
 
-    loadOrCreateTunnelManager { manager, error in
+    let staleManagerHint = readLastError()
+    loadOrCreateTunnelManager(staleManagerHint: staleManagerHint) { manager, error in
       if let error {
         let errorMessage = self.describeError(error)
         self.writeLastError(errorMessage)
@@ -191,9 +253,10 @@ class DarwinHostApiImpl: DarwinHostApi {
           message: "No available Packet Tunnel manager",
           details: nil
         )
-        self.writeLastError(managerError.localizedDescription)
+        let errorMessage = self.describeError(managerError)
+        self.writeLastError(errorMessage)
         self.emitPacketTunnelError(
-          code: "manager-unavailable", message: managerError.localizedDescription)
+          code: "manager-unavailable", message: errorMessage)
         completion(.failure(managerError))
         return
       }
@@ -201,9 +264,10 @@ class DarwinHostApiImpl: DarwinHostApi {
       self.prepareManagerWithLatestOptions(manager: manager, options: options) {
         prepared, prepareError in
         if let prepareError {
-          self.writeLastError(prepareError.localizedDescription)
+          let errorMessage = self.describeError(prepareError)
+          self.writeLastError(errorMessage)
           self.emitPacketTunnelError(
-            code: "manager-prepare-failed", message: prepareError.localizedDescription)
+            code: "manager-prepare-failed", message: errorMessage)
           completion(.failure(prepareError))
           return
         }
@@ -213,25 +277,20 @@ class DarwinHostApiImpl: DarwinHostApi {
             message: "Packet Tunnel manager was not prepared",
             details: nil
           )
-          self.writeLastError(preparedError.localizedDescription)
+          let errorMessage = self.describeError(preparedError)
+          self.writeLastError(errorMessage)
           self.emitPacketTunnelError(
-            code: "manager-prepare-failed", message: preparedError.localizedDescription)
+            code: "manager-prepare-failed", message: errorMessage)
           completion(.failure(preparedError))
           return
         }
 
-        do {
-          try prepared.connection.startVPNTunnel(options: options)
-          self.clearLastError()
-          self.writeStartedAt(Int64(Date().timeIntervalSince1970))
-          self.emitPacketTunnelStateChanged()
-          completion(.success(()))
-        } catch {
-          let errorMessage = self.describeError(error)
-          self.writeLastError(errorMessage)
-          self.emitPacketTunnelError(code: "start-failed", message: errorMessage)
-          completion(.failure(error))
-        }
+        self.startPreparedPacketTunnel(
+          manager: prepared,
+          options: options,
+          allowRepairOnIOS: true,
+          completion: completion
+        )
       }
     }
   }
@@ -274,16 +333,24 @@ class DarwinHostApiImpl: DarwinHostApi {
         state = "not_configured"
       }
 
-      completion(
-        .success(
-          TunnelStatus(
-            state: state,
-            lastError: self.readLastError(),
-            utunInterfaces: self.listUtunInterfaces(),
-            startedAt: self.readStartedAt()
+      if !self.shouldExposeStartedAt(for: state) {
+        self.clearStartedAt()
+      }
+      let startedAt = self.shouldExposeStartedAt(for: state) ? self.readStartedAt() : nil
+      let utunInterfaces = self.listUtunInterfaces()
+
+      self.resolveLastDisconnectError(manager: manager, state: state) { lastError in
+        completion(
+          .success(
+            TunnelStatus(
+              state: state,
+              lastError: lastError,
+              utunInterfaces: utunInterfaces,
+              startedAt: startedAt
+            )
           )
         )
-      )
+      }
     }
   }
 
@@ -365,85 +432,6 @@ class DarwinHostApiImpl: DarwinHostApi {
     return options
   }
 
-  #if os(iOS)
-    private func registerPacketTunnelManagerForSystemSettings(options: [String: NSObject]) throws {
-      let manager = try waitForTunnelManagerOperation(
-        timeoutSeconds: 15,
-        timeoutCode: "manager-load-timeout",
-        timeoutMessage: "Timed out while loading Packet Tunnel manager"
-      ) { completion in
-        self.loadOrCreateTunnelManager(completion: completion)
-      }
-
-      _ = try waitForTunnelManagerOperation(
-        timeoutSeconds: 15,
-        timeoutCode: "manager-prepare-timeout",
-        timeoutMessage: "Timed out while saving Packet Tunnel manager"
-      ) { completion in
-        self.prepareManagerWithLatestOptions(
-          manager: manager,
-          options: options,
-          completion: completion
-        )
-      }
-    }
-
-    private func waitForTunnelManagerOperation(
-      timeoutSeconds: TimeInterval,
-      timeoutCode: String,
-      timeoutMessage: String,
-      operation: (@escaping (NETunnelProviderManager?, Error?) -> Void) -> Void
-    ) throws -> NETunnelProviderManager {
-      let semaphore = DispatchSemaphore(value: 0)
-      var resolvedManager: NETunnelProviderManager?
-      var resolvedError: Error?
-
-      operation { manager, error in
-        resolvedManager = manager
-        resolvedError = error
-        semaphore.signal()
-      }
-
-      let deadline = Date().addingTimeInterval(timeoutSeconds)
-      if Thread.isMainThread {
-        while true {
-          if semaphore.wait(timeout: .now()) == .success {
-            break
-          }
-          if Date() >= deadline {
-            throw PigeonError(
-              code: timeoutCode,
-              message: timeoutMessage,
-              details: nil
-            )
-          }
-          RunLoop.current.run(
-            mode: .default,
-            before: Date().addingTimeInterval(0.05)
-          )
-        }
-      } else if semaphore.wait(timeout: .now() + timeoutSeconds) == .timedOut {
-        throw PigeonError(
-          code: timeoutCode,
-          message: timeoutMessage,
-          details: nil
-        )
-      }
-
-      if let resolvedError {
-        throw resolvedError
-      }
-      guard let resolvedManager else {
-        throw PigeonError(
-          code: "manager-unavailable",
-          message: "No available Packet Tunnel manager",
-          details: nil
-        )
-      }
-      return resolvedManager
-    }
-  #endif
-
   private func packetTunnelProviderBundleId() -> String? {
     if let value = Bundle.main.object(forInfoDictionaryKey: "PacketTunnelProviderBundleId")
       as? String,
@@ -464,18 +452,18 @@ class DarwinHostApiImpl: DarwinHostApi {
         return
       }
       let providerId = self.packetTunnelProviderBundleId()
-      let manager =
-        managers?.first(where: { mgr in
-          guard let proto = mgr.protocolConfiguration as? NETunnelProviderProtocol else {
-            return false
-          }
-          return proto.providerBundleIdentifier == providerId
-        }) ?? managers?.first
+      let manager = managers?.first(where: { mgr in
+        guard let proto = mgr.protocolConfiguration as? NETunnelProviderProtocol else {
+          return false
+        }
+        return proto.providerBundleIdentifier == providerId
+      })
       completion(manager, nil)
     }
   }
 
   private func loadOrCreateTunnelManager(
+    staleManagerHint: String? = nil,
     completion: @escaping (NETunnelProviderManager?, Error?) -> Void
   ) {
     NETunnelProviderManager.loadAllFromPreferences { managers, error in
@@ -484,18 +472,7 @@ class DarwinHostApiImpl: DarwinHostApi {
         return
       }
 
-      let providerId = self.packetTunnelProviderBundleId()
-      if let manager = managers?.first(where: { mgr in
-        guard let proto = mgr.protocolConfiguration as? NETunnelProviderProtocol else {
-          return false
-        }
-        return proto.providerBundleIdentifier == providerId
-      }) {
-        completion(manager, nil)
-        return
-      }
-
-      guard let providerId else {
+      guard let providerId = self.packetTunnelProviderBundleId() else {
         completion(
           nil,
           NSError(
@@ -506,30 +483,200 @@ class DarwinHostApiImpl: DarwinHostApi {
         return
       }
 
-      let manager = NETunnelProviderManager()
-      let proto = NETunnelProviderProtocol()
-      proto.providerBundleIdentifier = providerId
-      proto.serverAddress = self.packetTunnelDisplayName
-      proto.providerConfiguration = [
-        "options": self.storedPacketTunnelOptions() ?? [:]
-      ]
+      let allManagers = managers ?? []
+      let matchingManagers = allManagers.filter { mgr in
+        guard let proto = mgr.protocolConfiguration as? NETunnelProviderProtocol else {
+          return false
+        }
+        return proto.providerBundleIdentifier == providerId
+      }
+      let sameNameManagers = allManagers.filter { mgr in
+        mgr.localizedDescription == self.packetTunnelDisplayName
+      }
+      let shouldForceRecreate = self.shouldForceManagerRecreation(
+        staleManagerHint: staleManagerHint
+      )
 
-      manager.protocolConfiguration = proto
-      manager.localizedDescription = self.packetTunnelDisplayName
-      manager.isEnabled = true
-
-      manager.saveToPreferences { saveError in
-        if let saveError {
-          completion(nil, saveError)
+      if let manager = matchingManagers.first {
+        let hasDuplicateMatches = matchingManagers.count > 1
+        let hasStaleSameNameManagers = sameNameManagers.contains { mgr in
+          guard let proto = mgr.protocolConfiguration as? NETunnelProviderProtocol else {
+            return true
+          }
+          return proto.providerBundleIdentifier != providerId
+        }
+        if hasDuplicateMatches
+          || hasStaleSameNameManagers
+          || shouldForceRecreate
+          || self.shouldRecreateTunnelManager(manager, providerId: providerId)
+        {
+          self.recreateTunnelManager(providerId: providerId, completion: completion)
           return
         }
-        manager.loadFromPreferences { loadError in
-          if let loadError {
-            completion(nil, loadError)
-            return
+        completion(manager, nil)
+        return
+      }
+
+      if !sameNameManagers.isEmpty {
+        self.recreateTunnelManager(providerId: providerId, completion: completion)
+        return
+      }
+
+      self.createTunnelManager(providerId: providerId, completion: completion)
+    }
+  }
+
+  private func shouldRecreateTunnelManager(
+    _ manager: NETunnelProviderManager,
+    providerId: String?
+  ) -> Bool {
+    guard let providerId else {
+      return false
+    }
+    guard let proto = manager.protocolConfiguration as? NETunnelProviderProtocol else {
+      return true
+    }
+    if proto.providerBundleIdentifier != providerId {
+      return true
+    }
+    if manager.localizedDescription != packetTunnelDisplayName {
+      return true
+    }
+    if proto.serverAddress != packetTunnelDisplayName {
+      return true
+    }
+    if manager.connection.status == .invalid {
+      return true
+    }
+    return false
+  }
+
+  private func shouldForceManagerRecreation(staleManagerHint: String?) -> Bool {
+    #if os(iOS)
+      return isPluginRegistrationError(staleManagerHint)
+    #else
+      _ = staleManagerHint
+      return false
+    #endif
+  }
+
+  // iOS can retain a stale System VPN profile after reinstall/update. When the
+  // system reports that the VPN app needs to be updated, force a full manager
+  // recreation so the profile binds to the current Packet Tunnel extension.
+  private func isPluginRegistrationError(_ message: String?) -> Bool {
+    guard let message else {
+      return false
+    }
+    let normalized =
+      message
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    guard !normalized.isEmpty else {
+      return false
+    }
+    if normalized.contains("domain=nevpnconnectionerrordomain")
+      && normalized.contains("code=14")
+    {
+      return true
+    }
+    if normalized.contains("vpn app used by the vpn configuration is not installed") {
+      return true
+    }
+    if normalized.contains("needed to be updated") {
+      return true
+    }
+    return false
+  }
+
+  private func recreateTunnelManager(
+    providerId: String,
+    completion: @escaping (NETunnelProviderManager?, Error?) -> Void
+  ) {
+    NETunnelProviderManager.loadAllFromPreferences { managers, error in
+      if let error {
+        completion(nil, error)
+        return
+      }
+
+      let staleManagers =
+        managers?.filter { mgr in
+          guard let proto = mgr.protocolConfiguration as? NETunnelProviderProtocol else {
+            return mgr.localizedDescription == self.packetTunnelDisplayName
           }
-          completion(manager, nil)
+          return
+            proto.providerBundleIdentifier == providerId
+            || mgr.localizedDescription == self.packetTunnelDisplayName
+        } ?? []
+
+      self.removeTunnelManagers(staleManagers) { removeError in
+        if let removeError {
+          completion(nil, removeError)
+          return
         }
+        self.createTunnelManager(providerId: providerId, completion: completion)
+      }
+    }
+  }
+
+  private func removeTunnelManagers(
+    _ managers: [NETunnelProviderManager],
+    completion: @escaping (Error?) -> Void
+  ) {
+    guard !managers.isEmpty else {
+      completion(nil)
+      return
+    }
+
+    let group = DispatchGroup()
+    let lock = NSLock()
+    var firstError: Error?
+
+    for manager in managers {
+      group.enter()
+      manager.removeFromPreferences { error in
+        if let error {
+          lock.lock()
+          if firstError == nil {
+            firstError = error
+          }
+          lock.unlock()
+        }
+        group.leave()
+      }
+    }
+
+    group.notify(queue: .main) {
+      completion(firstError)
+    }
+  }
+
+  private func createTunnelManager(
+    providerId: String,
+    completion: @escaping (NETunnelProviderManager?, Error?) -> Void
+  ) {
+    let manager = NETunnelProviderManager()
+    let proto = NETunnelProviderProtocol()
+    proto.providerBundleIdentifier = providerId
+    proto.serverAddress = self.packetTunnelDisplayName
+    proto.providerConfiguration = [
+      "options": self.storedPacketTunnelOptions() ?? [:]
+    ]
+
+    manager.protocolConfiguration = proto
+    manager.localizedDescription = self.packetTunnelDisplayName
+    manager.isEnabled = true
+
+    manager.saveToPreferences { saveError in
+      if let saveError {
+        completion(nil, saveError)
+        return
+      }
+      manager.loadFromPreferences { loadError in
+        if let loadError {
+          completion(nil, loadError)
+          return
+        }
+        completion(manager, nil)
       }
     }
   }
@@ -596,7 +743,216 @@ class DarwinHostApiImpl: DarwinHostApi {
     }
   }
 
+  private func shouldExposeStartedAt(for state: String) -> Bool {
+    switch state {
+    case "connected", "connecting", "reasserting", "disconnecting":
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func resolveLastDisconnectError(
+    manager: NETunnelProviderManager?,
+    state: String,
+    completion: @escaping (String?) -> Void
+  ) {
+    let storedError = readLastError()?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedStoredError = storedError?.isEmpty == false ? storedError : nil
+    guard let manager else {
+      completion(normalizedStoredError)
+      return
+    }
+    guard state == "disconnected" || state == "invalid" else {
+      completion(normalizedStoredError)
+      return
+    }
+
+    #if os(iOS) || os(macOS)
+      if #available(iOS 16.0, macOS 13.0, *) {
+        manager.connection.fetchLastDisconnectError { error in
+          if let error {
+            let described = self.describeError(error)
+            self.writeLastError(described)
+            completion(described)
+            return
+          }
+          completion(normalizedStoredError)
+        }
+        return
+      }
+    #endif
+
+    completion(normalizedStoredError)
+  }
+
+  private func startPreparedPacketTunnel(
+    manager: NETunnelProviderManager,
+    options: [String: NSObject],
+    allowRepairOnIOS: Bool,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    do {
+      clearStartedAt()
+      try manager.connection.startVPNTunnel(options: options)
+      clearLastError()
+      emitPacketTunnelStateChanged()
+
+      #if os(iOS)
+        verifyIOSPacketTunnelStartup(
+          manager: manager,
+          options: options,
+          allowRepair: allowRepairOnIOS,
+          completion: completion
+        )
+      #else
+        completion(.success(()))
+      #endif
+    } catch {
+      let errorMessage = describeError(error)
+      #if os(iOS)
+        if allowRepairOnIOS && isPluginRegistrationError(errorMessage) {
+          repairAndRestartPacketTunnel(options: options, completion: completion)
+          return
+        }
+      #endif
+      writeLastError(errorMessage)
+      emitPacketTunnelError(code: "start-failed", message: errorMessage)
+      completion(.failure(error))
+    }
+  }
+
+  #if os(iOS)
+    private func verifyIOSPacketTunnelStartup(
+      manager: NETunnelProviderManager,
+      options: [String: NSObject],
+      allowRepair: Bool,
+      completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        let state = self.mapStatus(manager.connection.status)
+        if state == "disconnected" || state == "invalid" {
+          self.resolveLastDisconnectError(manager: manager, state: state) { lastError in
+            if allowRepair, self.isPluginRegistrationError(lastError) {
+              self.repairAndRestartPacketTunnel(options: options, completion: completion)
+              return
+            }
+            if let lastError,
+              !lastError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+              completion(
+                .failure(
+                  PigeonError(
+                    code: "start-failed",
+                    message: lastError,
+                    details: nil
+                  )
+                )
+              )
+              return
+            }
+            completion(.success(()))
+          }
+          return
+        }
+
+        completion(.success(()))
+      }
+    }
+
+    private func repairAndRestartPacketTunnel(
+      options: [String: NSObject],
+      completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+      guard let providerId = packetTunnelProviderBundleId() else {
+        let error = PigeonError(
+          code: "manager-repair-failed",
+          message: "Missing PacketTunnel provider bundle id",
+          details: nil
+        )
+        let errorMessage = describeError(error)
+        writeLastError(errorMessage)
+        emitPacketTunnelError(code: "manager-repair-failed", message: errorMessage)
+        completion(.failure(error))
+        return
+      }
+
+      recreateTunnelManager(providerId: providerId) { manager, recreateError in
+        if let recreateError {
+          let errorMessage = self.describeError(recreateError)
+          self.writeLastError(errorMessage)
+          self.emitPacketTunnelError(code: "manager-repair-failed", message: errorMessage)
+          completion(.failure(recreateError))
+          return
+        }
+
+        guard let manager else {
+          let error = PigeonError(
+            code: "manager-repair-failed",
+            message: "No available Packet Tunnel manager after repair",
+            details: nil
+          )
+          let errorMessage = self.describeError(error)
+          self.writeLastError(errorMessage)
+          self.emitPacketTunnelError(code: "manager-repair-failed", message: errorMessage)
+          completion(.failure(error))
+          return
+        }
+
+        self.prepareManagerWithLatestOptions(manager: manager, options: options) {
+          repairedManager, prepareError in
+          if let prepareError {
+            let errorMessage = self.describeError(prepareError)
+            self.writeLastError(errorMessage)
+            self.emitPacketTunnelError(code: "manager-repair-failed", message: errorMessage)
+            completion(.failure(prepareError))
+            return
+          }
+
+          guard let repairedManager else {
+            let error = PigeonError(
+              code: "manager-repair-failed",
+              message: "Packet Tunnel manager was not prepared after repair",
+              details: nil
+            )
+            let errorMessage = self.describeError(error)
+            self.writeLastError(errorMessage)
+            self.emitPacketTunnelError(code: "manager-repair-failed", message: errorMessage)
+            completion(.failure(error))
+            return
+          }
+
+          self.startPreparedPacketTunnel(
+            manager: repairedManager,
+            options: options,
+            allowRepairOnIOS: false,
+            completion: completion
+          )
+        }
+      }
+    }
+  #endif
+
   private func describeError(_ error: Error) -> String {
+    if let pigeonError = error as? PigeonError {
+      var parts: [String] = []
+      parts.append("code=\(pigeonError.code)")
+      if let message = pigeonError.message,
+        !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
+        parts.append("message=\(message)")
+      }
+      if let details = pigeonError.details {
+        let detailString = String(describing: details).trimmingCharacters(
+          in: .whitespacesAndNewlines
+        )
+        if !detailString.isEmpty {
+          parts.append("details=\(detailString)")
+        }
+      }
+      return parts.joined(separator: ", ")
+    }
+
     let nsError = error as NSError
     var parts: [String] = []
     parts.append("domain=\(nsError.domain)")
@@ -644,10 +1000,6 @@ class DarwinHostApiImpl: DarwinHostApi {
     }
 
     return names.sorted()
-  }
-
-  private func writeStartedAt(_ timestamp: Int64) {
-    sharedDefaults().set(timestamp, forKey: statusStartedAtKey)
   }
 
   private func clearStartedAt() {

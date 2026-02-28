@@ -65,14 +65,16 @@ Key components:
 
 ## 4) Startup Sequence
 
-1. Dart builds `TunnelProfile` and calls `savePacketTunnelProfile`.
-2. On iOS, `DarwinHostApiImpl` also loads/creates `NETunnelProviderManager` during profile save so `Xstream` becomes visible in the system VPN list before connection starts.
-3. Dart calls `startPacketTunnel`.
-4. `DarwinHostApiImpl` refreshes `NETunnelProviderManager` with latest options, then starts VPN tunnel.
-5. `PacketTunnelProvider.startTunnel` resolves options, builds network settings, and applies `setTunnelNetworkSettings`.
-6. Provider resolves the active Packet Tunnel fd / `utun` handle inside the extension process.
-7. Provider starts `XrayTunnelEngine` with `StartXrayTunnelWithFd(config, fd, egressInterface)`.
-8. Status is persisted and emitted back to Flutter with `TunnelStatus`.
+1. On iOS app launch, Flutter now proactively saves a baseline Packet Tunnel profile so the System VPN entry can appear before the first node import.
+2. Dart builds `TunnelProfile` and calls `savePacketTunnelProfile`.
+3. On iOS, the runtime tunnel config is normalized into the App Group shared container so the host app and `PacketTunnel` extension use the same config path.
+4. On iOS, `DarwinHostApiImpl` also loads/creates `NETunnelProviderManager` during profile save so `Xstream` becomes visible in the system VPN list before connection starts.
+5. Dart calls `startPacketTunnel`.
+6. `DarwinHostApiImpl` refreshes `NETunnelProviderManager` with latest options, then starts VPN tunnel.
+7. `PacketTunnelProvider.startTunnel` resolves options, builds network settings, and applies `setTunnelNetworkSettings`.
+8. Provider resolves the active Packet Tunnel fd / `utun` handle inside the extension process.
+9. Provider starts `XrayTunnelEngine` with `StartXrayTunnelWithFd(config, fd, egressInterface)`.
+10. Status is persisted and emitted back to Flutter with `TunnelStatus`.
 
 There is no separate Darwin startup path that launches the tunnel engine without the Packet Tunnel fd. If fd handoff fails, provider startup fails and reports that error back through the shared status path.
 

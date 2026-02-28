@@ -122,6 +122,14 @@ class VpnNode {
 class VpnConfig {
   static List<VpnNode> _nodes = [];
 
+  static bool get _requiresPrivilegedPassword {
+    return !(Platform.isIOS || Platform.isAndroid);
+  }
+
+  static bool get _requiresServiceDefinition {
+    return !(Platform.isIOS || Platform.isAndroid);
+  }
+
   static Future<String> getConfigPath() async {
     return await GlobalApplicationConfig.getLocalConfigPath();
   }
@@ -252,7 +260,9 @@ class VpnConfig {
     required Function(String) setMessage,
     required Function(String) logMessage,
   }) async {
-    checkNotEmpty(password, 'password');
+    if (_requiresPrivilegedPassword) {
+      checkNotEmpty(password, 'password');
+    }
     checkNotNull(setMessage, 'setMessage');
     checkNotNull(logMessage, 'logMessage');
     final bundleId = await GlobalApplicationConfig.getBundleId();
@@ -307,7 +317,9 @@ class VpnConfig {
     checkNotEmpty(domain, 'domain');
     checkNotEmpty(port, 'port');
     checkNotEmpty(uuid, 'uuid');
-    checkNotEmpty(password, 'password');
+    if (_requiresPrivilegedPassword) {
+      checkNotEmpty(password, 'password');
+    }
     checkNotEmpty(bundleId, 'bundleId');
     checkNotNull(setMessage, 'setMessage');
     checkNotNull(logMessage, 'logMessage');
@@ -357,13 +369,16 @@ class VpnConfig {
       serviceName,
     );
 
-    final serviceContent = await _generateServiceContent(
+    var serviceContent = await _generateServiceContent(
       code,
       bundleId,
       xrayConfigPath,
       serviceName,
     );
-    if (serviceContent.isEmpty) return;
+    if (serviceContent.isEmpty) {
+      if (_requiresServiceDefinition) return;
+      serviceContent = '# Xstream mobile node marker for $nodeName\n';
+    }
 
     final vpnNodesConfigPath =
         await GlobalApplicationConfig.getLocalConfigPath();

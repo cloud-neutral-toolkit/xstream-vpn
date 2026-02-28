@@ -1,10 +1,15 @@
 # Unreleased
 
 ## ✅ Changes
+- Moved iOS Packet Tunnel runtime config into the App Group shared container so the host app and Packet Tunnel extension use the same System VPN runtime path
+- Added iOS startup bootstrap to register the System VPN profile even before the first node import, so `Xstream` can appear in the system VPN list earlier
 - Updated iOS Packet Tunnel profile save flow to register `Xstream` in the system VPN list during profile save, and pre-register the VPN profile after iOS node import without auto-connecting
 - Fixed iOS Packet Tunnel provider build by replacing unavailable iPhoneOS SDK `utun` macros with stable Darwin fallback constants
 - Added repo-local `xstream-ios-real-device-smoke` skill with executable iPhone smoke script, baseline, test cases, and latest report
 - Added iOS `RunnerTests` Packet Tunnel start/stop smoke coverage and test-host fixes for real-device execution
+- Updated the iOS host app startup to use Flutter's implicit engine registration path so Release builds can register plugins and native Packet Tunnel channels without crashing at launch
+- Allowed iOS node import to generate sandbox config files without requiring a desktop sudo password, while keeping desktop service generation rules unchanged
+- Improved iOS Packet Tunnel diagnostics to clear stale session timestamps before new starts and surface the system VPN's last disconnect error during status checks
 - Recorded current iPhone Packet Tunnel smoke blocker and next-step checklist in `docs/ios-packet-tunnel-real-device-followup.md`
 - Removed tun2socks-based system-wide path; Packet Tunnel is now the only TUN/VPN entry on macOS
 - Cleaned tun2socks scripts/resources/docs and related native/Dart APIs

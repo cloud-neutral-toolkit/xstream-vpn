@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../utils/global_config.dart';
 import '../../utils/native_bridge.dart';
-import '../../widgets/log_console.dart';
 import '../../utils/app_logger.dart';
+import '../../widgets/log_console.dart' show LogLevel;
 import '../../services/vpn_config_service.dart';
 import '../l10n/app_localizations.dart';
 
@@ -25,10 +26,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   String _message = '';
   String? _bundleId; // Start with null and load it asynchronously
   bool _autoFlowRunning = false;
+  Timer? _autoParseDebounce;
+  String _lastAutoParsedUri = '';
 
   @override
   void initState() {
     super.initState();
+    _vlessUriController.addListener(_scheduleAutoParse);
     // Directly load bundleId when the state is initialized
     GlobalApplicationConfig.getBundleId().then((bundleId) {
       setState(() {
@@ -43,15 +47,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final initialUri = widget.initialVlessUri?.trim() ?? '';
     if (initialUri.isNotEmpty) {
       _vlessUriController.text = initialUri;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _onParseVlessUri(autoComplete: true);
-      });
     }
   }
 
   @override
   void dispose() {
+    _autoParseDebounce?.cancel();
+    _vlessUriController.removeListener(_scheduleAutoParse);
     _vlessUriController.dispose();
     _nodeNameController.dispose();
     _domainController.dispose();
@@ -60,7 +62,33 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     super.dispose();
   }
 
-  Future<void> _onParseVlessUri({bool autoComplete = true}) async {
+  void _scheduleAutoParse() {
+    final rawUri = _vlessUriController.text.trim();
+    _autoParseDebounce?.cancel();
+
+    if (rawUri.isEmpty) {
+      _lastAutoParsedUri = '';
+      return;
+    }
+
+    if (!rawUri.startsWith('vless://') || rawUri == _lastAutoParsedUri) {
+      return;
+    }
+
+    _autoParseDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      final latestUri = _vlessUriController.text.trim();
+      if (latestUri.isEmpty ||
+          !latestUri.startsWith('vless://') ||
+          latestUri == _lastAutoParsedUri) {
+        return;
+      }
+      _lastAutoParsedUri = latestUri;
+      _onParseVlessUri();
+    });
+  }
+
+  Future<void> _onParseVlessUri() async {
     final rawUri = _vlessUriController.text.trim();
     if (rawUri.isEmpty) {
       setState(() {
@@ -85,13 +113,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       addAppLog(
         '已解析 VLESS 链接: ${parsed.name}, ${parsed.protocol}/${parsed.network}/${parsed.security}',
       );
-      if (autoComplete) {
-        await _generateAndSyncFromVless(
-          rawUri: rawUri,
-          fallbackNodeName: parsed.name,
-          autoFlow: true,
-        );
-      }
     } catch (e) {
       setState(() {
         _message = '${context.l10n.get('vlessUriInvalid')}: $e';
@@ -116,7 +137,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       await _generateAndSyncFromVless(
         rawUri: rawUri,
         fallbackNodeName: _nodeNameController.text.trim(),
-        autoFlow: false,
       );
       return;
     }
@@ -170,7 +190,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _generateAndSyncFromVless({
     required String rawUri,
     required String fallbackNodeName,
-    required bool autoFlow,
   }) async {
     if (_autoFlowRunning) return;
     final requiresUnlock = !Platform.isIOS;
@@ -193,11 +212,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     try {
       _autoFlowRunning = true;
-      if (autoFlow) {
-        setState(() {
-          _message = context.l10n.get('autoImportInProgress');
-        });
-      }
       final parsed = VpnConfig.parseVlessUri(
         rawUri,
         fallbackNodeName: fallbackNodeName,
@@ -248,57 +262,77 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       appBar: AppBar(
         title: Text(context.l10n.get('addNodeConfig')),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextField(
+                        controller: _vlessUriController,
+                        decoration: InputDecoration(
+                          labelText: context.l10n.get('vlessUri'),
+                        ),
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _nodeNameController,
+                        decoration: InputDecoration(
+                          labelText: context.l10n.get('nodeName'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _domainController,
+                        decoration: InputDecoration(
+                          labelText: context.l10n.get('serverDomain'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _portController,
+                        decoration: InputDecoration(
+                          labelText: context.l10n.get('port'),
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _uuidController,
+                        decoration: InputDecoration(
+                          labelText: context.l10n.get('uuid'),
+                        ),
+                      ),
+                      if (_message.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          _message,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            TextField(
-              controller: _vlessUriController,
-              decoration:
-                  InputDecoration(labelText: context.l10n.get('vlessUri')),
-              maxLines: 2,
+            FilledButton(
+              onPressed: _autoFlowRunning ? null : _onCreateConfig,
+              child: Text(context.l10n.get('saveConfig')),
             ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                onPressed: () => _onParseVlessUri(autoComplete: true),
-                child: Text(context.l10n.get('parseVlessUri')),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _nodeNameController,
-              decoration: InputDecoration(
-                labelText: context.l10n.get('nodeName'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _domainController,
-              decoration: InputDecoration(
-                labelText: context.l10n.get('serverDomain'),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _portController,
-              decoration: InputDecoration(labelText: context.l10n.get('port')),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _uuidController,
-              decoration: InputDecoration(labelText: context.l10n.get('uuid')),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _onCreateConfig,
-              child: Text(context.l10n.get('generateSave')),
-            ),
-            const SizedBox(height: 16),
-            Text(_message, style: const TextStyle(color: Colors.red)),
           ],
         ),
       ),

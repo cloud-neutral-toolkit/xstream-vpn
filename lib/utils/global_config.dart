@@ -12,21 +12,40 @@ const String kUpdateBaseUrl = '$kArtifactBaseUrl/';
 // LogConsole Global Key
 final GlobalKey<LogConsoleState> logConsoleKey = GlobalKey<LogConsoleState>();
 
-/// 当前构建版本号，可在应用各处引用
-final String buildVersion = (() {
-  const branch = String.fromEnvironment('BRANCH_NAME', defaultValue: '');
-  const buildId = String.fromEnvironment('BUILD_ID', defaultValue: 'local');
-  const buildDate =
-      String.fromEnvironment('BUILD_DATE', defaultValue: 'unknown');
+String _normalizeReleaseLabel(String branch) {
+  final suffix = branch.replaceFirst('release/', '');
+  final dottedRelease = RegExp(r'^(v\d+\.\d+)\.(\d+)$').firstMatch(suffix);
+  if (dottedRelease != null) {
+    return '${dottedRelease.group(1)}-${dottedRelease.group(2)}';
+  }
+  return suffix;
+}
 
-  if (branch.startsWith('release/')) {
-    final version = branch.replaceFirst('release/', '');
-    return 'v$version-$buildDate-$buildId';
+String _displayBranchLabel(String branch) {
+  if (branch.isEmpty) {
+    return 'dev';
   }
   if (branch == 'main') {
-    return 'latest-$buildDate-$buildId';
+    return 'latest';
   }
-  return 'dev-$buildDate-$buildId';
+  if (branch.startsWith('release/')) {
+    return _normalizeReleaseLabel(branch);
+  }
+  return branch.replaceAll('/', '-');
+}
+
+/// 当前展示版本标签。
+final String buildVersion = (() {
+  const branch = String.fromEnvironment('BRANCH_NAME', defaultValue: '');
+  const buildId = String.fromEnvironment('BUILD_ID', defaultValue: '');
+  const buildDate = String.fromEnvironment('BUILD_DATE', defaultValue: '');
+
+  final parts = <String>[
+    _displayBranchLabel(branch),
+    if (buildDate.isNotEmpty) buildDate,
+    if (buildId.isNotEmpty) buildId,
+  ];
+  return parts.join('-');
 })();
 
 /// 基础系统信息，用于匿名统计等场景

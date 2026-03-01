@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter/material.dart';
 
 import '../../utils/native_bridge.dart';
 import '../../utils/global_config.dart' show GlobalState;
@@ -32,11 +32,15 @@ class _LatencyVisual {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _emptyMetricValue = '— —';
-  static final Uri _latencyProbeUri = Uri.parse('https://example.com/');
+  static final List<Uri> _latencyProbeUris = <Uri>[
+    Uri(scheme: 'https', host: 'google.com', path: '/generate_204'),
+    Uri(scheme: 'https', host: 'github.com', path: '/'),
+    Uri(scheme: 'https', host: 'openai.com', path: '/'),
+  ];
   String _activeNode = '';
   String _selectedNode = '';
-  String _hoveredNode = '';
   String _highlightNode = '';
+  bool _showNodeOptions = false;
   bool _isSwitchingNode = false;
   bool _latencyProbeInFlight = false;
   List<VpnNode> vpnNodes = [];
@@ -95,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _activeNode = '';
         _highlightNode = '';
         _selectedNode = '';
+        _showNodeOptions = false;
         _connectedAt = null;
         _connectedDuration = Duration.zero;
         _connectedLocation = '-';
@@ -112,6 +117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _activeNode = GlobalState.activeNodeName.value;
       _highlightNode = GlobalState.lastImportedNodeName.value;
       _selectedNode = _activeNode.isNotEmpty ? _activeNode : _highlightNode;
+      _showNodeOptions = false;
     });
     _syncConnectedMeta();
     _scheduleClearHighlight();
@@ -392,10 +398,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_requiresPacketTunnelStatus && _packetTunnelExplicitlyUnavailable) {
       return null;
     }
+    final samples = <int>[];
+    for (final uri in _latencyProbeUris) {
+      final latency = await _probeLatencyViaHttp(uri);
+      if (latency != null) {
+        samples.add(latency);
+      }
+    }
+    if (samples.isEmpty) {
+      return null;
+    }
+    final total = samples.fold<int>(0, (sum, value) => sum + value);
+    return (total / samples.length).round();
+  }
+
+  Future<int?> _probeLatencyViaHttp(Uri uri) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
     try {
       final watch = Stopwatch()..start();
-      final request = await client.headUrl(_latencyProbeUri).timeout(
+      final request = await client.headUrl(uri).timeout(
             const Duration(seconds: 4),
           );
       request.followRedirects = false;
@@ -408,7 +429,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         return watch.elapsedMilliseconds;
       }
     } catch (_) {
-      return null;
+      try {
+        final watch = Stopwatch()..start();
+        final request =
+            await client.getUrl(uri).timeout(const Duration(seconds: 4));
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
+        final response =
+            await request.close().timeout(const Duration(seconds: 4));
+        await response.drain<void>();
+        watch.stop();
+        if (response.statusCode >= 200 && response.statusCode < 500) {
+          return watch.elapsedMilliseconds;
+        }
+      } catch (_) {
+        return null;
+      }
     } finally {
       client.close(force: true);
     }
@@ -425,24 +462,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       }
     });
-  }
-
-  Widget _buildTag(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE5E5E5),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          color: Color(0xFF666666),
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
   }
 
   VpnNode? _resolveActionNode() {
@@ -465,6 +484,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     setState(() {
       _selectedNode = node.name;
       _highlightNode = node.name;
+      _showNodeOptions = false;
       GlobalState.lastImportedNodeName.value = node.name;
     });
     _scheduleClearHighlight();
@@ -654,28 +674,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (latency == null || latency < 0) {
       return const _LatencyVisual(
         value: _emptyMetricValue,
-        label: _emptyMetricValue,
+        label: '',
         color: Color(0xFFB8BDC7),
       );
     }
-    if (latency < 50) {
+    if (latency < 300) {
       return _LatencyVisual(
         value: '${latency}ms',
-        label: context.l10n.get('homeStatusGood'),
         color: const Color(0xFF3E8F5A),
+        label: '',
       );
     }
-    if (latency <= 200) {
+    if (latency <= 500) {
       return _LatencyVisual(
         value: '${latency}ms',
-        label: context.l10n.get('homeStatusFair'),
         color: const Color(0xFFBF8A3A),
+        label: '',
+      );
+    }
+    if (latency <= 800) {
+      return _LatencyVisual(
+        value: '${latency}ms',
+        color: const Color(0xFFC3655C),
+        label: '',
       );
     }
     return _LatencyVisual(
       value: '${latency}ms',
-      label: context.l10n.get('homeStatusHigh'),
-      color: const Color(0xFFC3655C),
+      color: const Color(0xFF8F3F3A),
+      label: '',
     );
   }
 
@@ -742,458 +769,498 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildMonitoringDashboard(BuildContext context) {
-    final metrics = _visibleMetrics;
-    final latency = _latencyVisual(
-      context,
-      _activeNode.isEmpty ? null : _latencyByNode[_activeNode],
-    );
+  bool get _hasActiveConnection => _activeNode.trim().isNotEmpty;
 
+  String _connectionStateLabel(BuildContext context) {
+    if (_isSwitchingNode) {
+      return _hasActiveConnection
+          ? context.l10n.get('tunStatusDisconnecting')
+          : context.l10n.get('tunStatusConnecting');
+    }
+    return _hasActiveConnection
+        ? context.l10n.get('tunStatusConnected')
+        : context.l10n.get('tunStatusDisconnected');
+  }
+
+  Color _connectionStateColor() {
+    if (_isSwitchingNode) {
+      return const Color(0xFFBF8A3A);
+    }
+    return _hasActiveConnection
+        ? const Color(0xFF3E8F5A)
+        : const Color(0xFFB8BDC7);
+  }
+
+  String _connectionMetaLine(BuildContext context) {
+    if (!_hasActiveConnection) {
+      return '';
+    }
+    final parts = <String>[
+      '${context.l10n.get('homeStatusDuration')}: ${_formatDuration(_connectedDuration)}',
+      if (_connectedLocation != '-')
+        '${context.l10n.get('homeStatusLocation')}: $_connectedLocation',
+    ];
+    return parts.join(' · ');
+  }
+
+  Widget _buildTrafficMetric({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildMonitoringCard(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _buildMetricBadge(
-                    Icons.south_rounded,
-                    const Color(0xFF5677C8),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    context.l10n.get('homeStatusDownload'),
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF707784),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              _buildMetricValue(
-                _formatRate(metrics.downloadBytesPerSecond),
-                const TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF232833),
-                  letterSpacing: -0.8,
-                  height: 1.0,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.north_rounded,
-                    size: 16,
-                    color: Color(0xFFB26079),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildMetricValue(
-                      '${context.l10n.get('homeStatusUpload')} ${_formatRate(metrics.uploadBytesPerSecond)}',
-                      const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF7A8090),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
-              child: _buildMonitoringCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        _buildMetricBadge(
-                          Icons.network_ping_rounded,
-                          latency.color,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          context.l10n.get('homeStatusLatency'),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF707784),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _buildMetricValue(
-                      latency.value,
-                      TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: latency.color,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: latency.color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          latency.label,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF7A8090),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildMonitoringCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        _buildMetricBadge(
-                          Icons.developer_mode_outlined,
-                          const Color(0xFF75809A),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          context.l10n.get('homeStatusCpu'),
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF707784),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    _buildMetricValue(
-                      _formatCpu(metrics.cpuPercent),
-                      const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF232833),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      _emptyMetricValue,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFFB8BDC7),
-                      ),
-                    ),
-                  ],
-                ),
+            _buildMetricBadge(icon, color),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF7A8090),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        _buildMonitoringCard(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
-            children: [
-              _buildMetricBadge(
-                Icons.memory_rounded,
-                const Color(0xFF8B74BA),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  context.l10n.get('homeStatusMemory'),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF707784),
-                  ),
-                ),
-              ),
-              _buildMetricValue(
-                _formatMemory(metrics.memoryBytes),
-                const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF667085),
-                ),
-              ),
-            ],
+        const SizedBox(height: 14),
+        _buildMetricValue(
+          value,
+          const TextStyle(
+            fontSize: 30,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1F2937),
+            letterSpacing: -0.8,
+            height: 1.0,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMobileNodeListPanel(BuildContext context, bool isUnlocked) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F7FA),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.dns_outlined,
-                size: 20,
-                color: Color(0xFF4A6572),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                context.l10n.get('nodeList'),
-                style: const TextStyle(
-                  color: Color(0xFF4A6572),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (vpnNodes.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.add_circle_outline_rounded,
-                      size: 36,
-                      color: Colors.grey.withValues(alpha: 0.45),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      context.l10n.get('addNodeHint'),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.withValues(alpha: 0.7),
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            SizedBox(
-              height: 110,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: vpnNodes.length,
-                itemBuilder: (context, index) {
-                  final node = vpnNodes[index];
-                  final isActive = _activeNode == node.name;
-                  final isSelected = _selectedNode == node.name;
-                  final latency = _latencyByNode[node.name];
+  Widget _buildLatencyChip(
+    BuildContext context,
+    _LatencyVisual latency, {
+    bool compact = false,
+  }) {
+    final textStyle = TextStyle(
+      fontSize: compact ? 12 : 13,
+      fontWeight: FontWeight.w600,
+      color: latency.value == _emptyMetricValue
+          ? const Color(0xFF7A8090)
+          : latency.color,
+    );
 
-                  return GestureDetector(
-                    onTap: (isUnlocked && !_isSwitchingNode)
-                        ? () => _selectNode(node)
-                        : null,
-                    child: Container(
-                      width: 160,
-                      margin: const EdgeInsets.only(right: 12),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? const Color(0xFFE8F5E9)
-                            : (isSelected
-                                ? const Color(0xFFE3F2FD)
-                                : Colors.white),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isActive
-                              ? Colors.green.withValues(alpha: 0.5)
-                              : (isSelected
-                                  ? Colors.blue.withValues(alpha: 0.5)
-                                  : Colors.grey.withValues(alpha: 0.2)),
-                          width: (isActive || isSelected) ? 2 : 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  node.name,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: isActive
-                                        ? Colors.green[800]
-                                        : const Color(0xFF222222),
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (isActive)
-                                const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.green,
-                                  size: 18,
-                                ),
-                            ],
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF5F7FA),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.speed,
-                                  size: 12,
-                                  color: Colors.grey,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  latency != null ? '${latency}ms' : '--',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 12,
+        vertical: compact ? 6 : 8,
+      ),
+      decoration: BoxDecoration(
+        color: latency.value == _emptyMetricValue
+            ? const Color(0xFFF6F7F9)
+            : latency.color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: latency.value == _emptyMetricValue
+              ? const Color(0xFFE3E7EE)
+              : latency.color.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: compact ? 7 : 8,
+            height: compact ? 7 : 8,
+            decoration: BoxDecoration(
+              color: latency.color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          SizedBox(width: compact ? 6 : 8),
+          Text(
+            '${context.l10n.get('homeStatusLatency')} ${latency.value}',
+            style: textStyle,
+          ),
+          if (latency.label.isNotEmpty) ...[
+            SizedBox(width: compact ? 4 : 6),
+            Text(
+              latency.label,
+              style: TextStyle(
+                fontSize: compact ? 11 : 12,
+                color: const Color(0xFF7A8090),
+                fontWeight: FontWeight.w500,
               ),
             ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildDesktopNodeListPanel(BuildContext context, bool isUnlocked) {
-    if (vpnNodes.isEmpty) {
-      return Center(child: Text(context.l10n.get('noNodes')));
+  Widget _buildBottomStatCell({
+    required String label,
+    required String value,
+    Color valueColor = const Color(0xFF667085),
+    Widget? leading,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (leading != null) ...[
+          leading,
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: RichText(
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: '$label ',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF98A1B2),
+                  ),
+                ),
+                TextSpan(
+                  text: value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: valueColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryStatusChip(BuildContext context, VpnNode? node) {
+    if (node != null && _activeNode == node.name) {
+      return _buildLatencyChip(
+        context,
+        _latencyVisual(context, _latencyByNode[node.name]),
+        compact: true,
+      );
     }
 
+    final color = _connectionStateColor();
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FB),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE9EBEF)),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: vpnNodes.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final node = vpnNodes[index];
-          final isActive = _activeNode == node.name;
-          final isSelected = _selectedNode == node.name;
-          final isHighlighted = _highlightNode == node.name || isSelected;
-          final bgColor = isActive
-              ? const Color(0xFFC8E6C9)
-              : (isHighlighted ? const Color(0xFFCFE6FF) : Colors.transparent);
-          final latency = _latencyByNode[node.name];
-          final tags = <String>[
-            node.protocol.trim().toLowerCase(),
-            node.transport.trim().toLowerCase(),
-            node.security.trim().toLowerCase(),
-          ].where((e) => e.isNotEmpty).toList();
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _connectionStateLabel(context),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-          return MouseRegion(
-            onEnter: (_) => setState(() {
-              _hoveredNode = node.name;
-              _selectedNode = node.name;
-              _highlightNode = node.name;
-            }),
-            onExit: (_) => setState(() => _hoveredNode = ''),
-            child: InkWell(
-              onTap: (isUnlocked && !_isSwitchingNode)
-                  ? () => _selectNode(node)
-                  : null,
-              child: Container(
-                color: bgColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                child: Row(
+  Widget _buildPrimaryStatusCard(BuildContext context) {
+    final metrics = _visibleMetrics;
+    final displayNode = _resolveActionNode();
+    final nodeName = displayNode?.name ?? context.l10n.get('noNodes');
+    final latency = _latencyVisual(
+      context,
+      _hasActiveConnection ? _latencyByNode[_activeNode] : null,
+    );
+    final connectionColor = _connectionStateColor();
+    final metaLine = _connectionMetaLine(context);
+
+    return _buildMonitoringCard(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            node.name,
-                            style: const TextStyle(
-                              fontSize: 40 / 1.6,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF222222),
-                            ),
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: connectionColor,
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(height: 10),
-                          if (tags.isNotEmpty || latency != null)
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                ...tags.map(_buildTag),
-                                if (latency != null) _buildTag('${latency}ms'),
-                              ],
-                            ),
-                        ],
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _connectionStateLabel(context),
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: connectionColor,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      nodeName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
                       ),
                     ),
-                    const SizedBox.shrink(),
+                    if (metaLine.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        metaLine,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF7A8090),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ),
-          );
-        },
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTrafficMetric(
+                  label: context.l10n.get('homeStatusDownload'),
+                  value: _formatRate(metrics.downloadBytesPerSecond),
+                  icon: Icons.south_rounded,
+                  color: const Color(0xFF5B8DEF),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildTrafficMetric(
+                  label: context.l10n.get('homeStatusUpload'),
+                  value: _formatRate(metrics.uploadBytesPerSecond),
+                  icon: Icons.north_rounded,
+                  color: const Color(0xFFDA6A87),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _buildBottomStatCell(
+                  label: context.l10n.get('homeStatusCpu'),
+                  value: _formatCpu(metrics.cpuPercent),
+                ),
+              ),
+              Expanded(
+                child: _buildBottomStatCell(
+                  label: context.l10n.get('homeStatusMemory'),
+                  value: _formatMemory(metrics.memoryBytes),
+                ),
+              ),
+              Expanded(
+                child: _buildBottomStatCell(
+                  label: context.l10n.get('homeStatusLatency'),
+                  value: latency.value,
+                  valueColor: latency.value == _emptyMetricValue
+                      ? const Color(0xFF667085)
+                      : latency.color,
+                  leading: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: latency.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildNodeOptionChip(
+      BuildContext context, VpnNode node, bool isUnlocked) {
+    final isActive = _activeNode == node.name;
+    final isSelected = _selectedNode == node.name;
+    final isHighlighted = _highlightNode == node.name;
+    final latency = _latencyByNode[node.name];
+    final emphasized = isActive || isSelected || isHighlighted;
+
+    return ChoiceChip(
+      showCheckmark: false,
+      selected: emphasized,
+      avatar: isActive
+          ? Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF3E8F5A),
+                shape: BoxShape.circle,
+              ),
+            )
+          : null,
+      label: Text(
+        latency == null ? node.name : '${node.name} · ${latency}ms',
+        overflow: TextOverflow.ellipsis,
+      ),
+      labelStyle: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: isActive ? const Color(0xFF215C37) : const Color(0xFF344054),
+      ),
+      backgroundColor: Colors.white,
+      selectedColor:
+          isActive ? const Color(0xFFE7F4EC) : const Color(0xFFF5F6F8),
+      side: BorderSide(
+        color: isActive
+            ? const Color(0xFF3E8F5A)
+            : emphasized
+                ? const Color(0xFFD5DAE3)
+                : const Color(0xFFE5E7EB),
+      ),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onSelected:
+          (isUnlocked && !_isSwitchingNode) ? (_) => _selectNode(node) : null,
+    );
+  }
+
+  Widget _buildNodeSummarySection(BuildContext context, bool isUnlocked) {
+    final node = _resolveActionNode();
+    final hasNodes = vpnNodes.isNotEmpty;
+
+    return _buildMonitoringCard(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: hasNodes
+                ? () => setState(() => _showNodeOptions = !_showNodeOptions)
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.dns_outlined,
+                    size: 20,
+                    color: Color(0xFF667085),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.l10n.get('nodeList'),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF98A1B2),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          node?.name ?? context.l10n.get('noNodes'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _buildSummaryStatusChip(context, node),
+                  if (hasNodes) ...[
+                    const SizedBox(width: 8),
+                    AnimatedRotation(
+                      turns: _showNodeOptions ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 220),
+                      child: const Icon(
+                        Icons.expand_more_rounded,
+                        color: Color(0xFF98A1B2),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: !hasNodes || !_showNodeOptions
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final node in vpnNodes)
+                            _buildNodeOptionChip(context, node, isUnlocked),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMonitoringDashboard(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildPrimaryStatusCard(context),
+      ],
     );
   }
 
@@ -1202,146 +1269,60 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return ValueListenableBuilder<bool>(
       valueListenable: GlobalState.isUnlocked,
       builder: (context, isUnlocked, _) {
-        final desktopContent = SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildMonitoringDashboard(context),
-              const SizedBox(height: 18),
-              _buildDesktopNodeListPanel(context, isUnlocked),
-            ],
-          ),
-        );
-
-        final hoverHint = _hoveredNode.isNotEmpty
-            ? '${context.l10n.get('hoverHintSelected')}: $_hoveredNode，'
-                '${context.l10n.get('hoverHintClickToStart')}'
-            : '';
-
-        final showStatusBar = _activeNode.isNotEmpty;
-        final activeLatency = _latencyByNode[_activeNode];
-
         return LayoutBuilder(
           builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 900;
-            if (isMobile) {
-              return Stack(
-                children: [
-                  SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildMonitoringDashboard(context),
-                        const SizedBox(height: 16),
-                        _buildMobileNodeListPanel(context, isUnlocked),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    right: 24,
-                    bottom: 24,
-                    child: FloatingActionButton(
-                      backgroundColor: const Color(0xFFD2E0FB),
-                      elevation: 0,
-                      onPressed:
-                          _isSwitchingNode ? null : _toggleFromFloatingButton,
-                      child: _isSwitchingNode
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Icon(
-                              _activeNode.isNotEmpty
-                                  ? Icons.stop
-                                  : Icons.play_arrow,
-                              color: const Color(0xFF1E2025),
-                              size: 32,
-                            ),
-                    ),
-                  ),
-                ],
-              );
-            }
-
             return Stack(
               children: [
-                desktopContent,
-                if (showStatusBar)
-                  Positioned(
-                    left: 16,
-                    right: 86,
-                    bottom: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.96),
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x22000000),
-                            blurRadius: 10,
-                            offset: Offset(0, 3),
-                          )
-                        ],
-                      ),
-                      child: Row(
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 860),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              '${context.l10n.get('homeStatusDuration')}: '
-                              '${_formatDuration(_connectedDuration)} '
-                              '${context.l10n.get('homeStatusLatency')}: '
-                              '${activeLatency == null ? "--" : "${activeLatency}ms"} '
-                              '${context.l10n.get('homeStatusLocation')}: '
-                              '$_connectedLocation',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          const Icon(Icons.chevron_right, size: 22),
+                          _buildMonitoringDashboard(context),
+                          const SizedBox(height: 16),
+                          _buildNodeSummarySection(context, isUnlocked),
                         ],
                       ),
                     ),
                   ),
-                if (hoverHint.isNotEmpty)
-                  Positioned(
-                    left: 16,
-                    right: 76,
-                    bottom: showStatusBar ? 76 : 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        hoverHint,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 13),
-                      ),
+                ),
+                Positioned(
+                  right: 20,
+                  bottom: 20,
+                  child: FloatingActionButton.extended(
+                    heroTag: 'home_connection_control',
+                    backgroundColor: _hasActiveConnection
+                        ? const Color(0xFF3E8F5A)
+                        : const Color(0xFF1F2937),
+                    foregroundColor: Colors.white,
+                    onPressed:
+                        _isSwitchingNode ? null : _toggleFromFloatingButton,
+                    icon: _isSwitchingNode
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            _hasActiveConnection
+                                ? Icons.stop_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                    label: Text(
+                      _isSwitchingNode
+                          ? _connectionStateLabel(context)
+                          : (_hasActiveConnection
+                              ? context.l10n.get('stopAcceleration')
+                              : context.l10n.get('startAcceleration')),
                     ),
                   ),
-                if (vpnNodes.isNotEmpty)
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: FloatingActionButton.small(
-                      onPressed:
-                          _isSwitchingNode ? null : _toggleFromFloatingButton,
-                      child: Icon(
-                        _activeNode.isNotEmpty
-                            ? Icons.pause_circle_filled
-                            : Icons.play_circle_fill,
-                      ),
-                    ),
-                  ),
+                ),
               ],
             );
           },

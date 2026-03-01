@@ -202,7 +202,11 @@ class DnsControlPlane {
   }
 
   List<String> sniffingDestOverride() {
-    final overrides = <String>['http', 'tls', 'quic'];
+    // Tunnel Mode prefers stable TCP fallback for browser traffic.
+    // Leaving QUIC enabled here can cause Chrome to attempt HTTP/3 over UDP
+    // and hit connection-closed failures on transports that do not handle it
+    // reliably.
+    final overrides = <String>['http', 'tls'];
     if (fakeDns.enabled && fakeDns.domains.isNotEmpty) {
       overrides.add('fakedns');
     }

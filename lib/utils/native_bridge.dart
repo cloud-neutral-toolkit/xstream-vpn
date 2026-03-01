@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:ffi' as ffi;
 import 'package:flutter/services.dart';
 import 'package:ffi/ffi.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/vpn_config_service.dart'; // 引入新的 VpnConfig 类
 import '../bindings/bridge_bindings.dart';
 import '../app/darwin_host_api.g.dart' as darwin_host;
@@ -22,8 +21,6 @@ class NativeBridge {
       _nativeMenuActionHandler;
   static String? _mobileActiveNodeName;
   static String? _darwinAppGroupPathCache;
-  static const _iosTunnelProfileSignatureKey =
-      'ios_packet_tunnel_profile_signature';
 
   static final bool _useFfi = Platform.isWindows ||
       Platform.isLinux ||
@@ -1212,81 +1209,13 @@ class NativeBridge {
     if (!Platform.isIOS) {
       return _darwinHostApi.savePacketTunnelProfile(profile);
     }
-
-    final signature = await _serializeTunnelProfile(profile);
-    final prefs = await SharedPreferences.getInstance();
-    final savedSignature = prefs.getString(_iosTunnelProfileSignatureKey);
-
-    if (!force && savedSignature == signature) {
-      return 'profile_unchanged';
-    }
-
     final result = await _darwinHostApi.savePacketTunnelProfile(profile);
-    if (result == 'profile_saved' || result == 'profile_unchanged') {
-      await prefs.setString(_iosTunnelProfileSignatureKey, signature);
+    if (force) {
+      return result;
     }
+    // The Packet Tunnel profile can be modified outside Flutter during tests
+    // and extension reconnects, so app-side signature caching is not reliable.
     return result;
-  }
-
-  static Future<String> _serializeTunnelProfile(
-    darwin_host.TunnelProfile profile,
-  ) async {
-    String? configFingerprint;
-    final configPath = profile.configPath.trim();
-    if (configPath.isNotEmpty) {
-      try {
-        final bytes = await File(configPath).readAsBytes();
-        configFingerprint = base64Encode(bytes);
-      } catch (_) {
-        configFingerprint = 'missing';
-      }
-    }
-
-    return jsonEncode({
-      'mtu': profile.mtu,
-      'tun46Setting': profile.tun46Setting,
-      'defaultNicSupport6': profile.defaultNicSupport6,
-      'dnsServers4': profile.dnsServers4,
-      'dnsServers6': profile.dnsServers6,
-      'ipv4Addresses': profile.ipv4Addresses,
-      'ipv4SubnetMasks': profile.ipv4SubnetMasks,
-      'ipv4IncludedRoutes': profile.ipv4IncludedRoutes
-          .map(
-            (route) => {
-              'destinationAddress': route.destinationAddress,
-              'subnetMask': route.subnetMask,
-            },
-          )
-          .toList(),
-      'ipv4ExcludedRoutes': profile.ipv4ExcludedRoutes
-          .map(
-            (route) => {
-              'destinationAddress': route.destinationAddress,
-              'subnetMask': route.subnetMask,
-            },
-          )
-          .toList(),
-      'ipv6Addresses': profile.ipv6Addresses,
-      'ipv6NetworkPrefixLengths': profile.ipv6NetworkPrefixLengths,
-      'ipv6IncludedRoutes': profile.ipv6IncludedRoutes
-          .map(
-            (route) => {
-              'destinationAddress': route.destinationAddress,
-              'networkPrefixLength': route.networkPrefixLength,
-            },
-          )
-          .toList(),
-      'ipv6ExcludedRoutes': profile.ipv6ExcludedRoutes
-          .map(
-            (route) => {
-              'destinationAddress': route.destinationAddress,
-              'networkPrefixLength': route.networkPrefixLength,
-            },
-          )
-          .toList(),
-      'configPath': profile.configPath,
-      'configFingerprint': configFingerprint,
-    });
   }
 
   /// Start embedded xray-core via FFI on iOS

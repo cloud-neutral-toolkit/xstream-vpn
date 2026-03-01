@@ -230,7 +230,10 @@ class DarwinHostApiImpl: DarwinHostApi {
       return
     }
 
-    if let configPath = options["configPath"] as? String {
+    let embeddedConfig = (options["config"] as? Data) ?? ((options["config"] as? NSData) as Data?)
+    if let embeddedConfig, !embeddedConfig.isEmpty {
+      options["config"] = embeddedConfig as NSData
+    } else if let configPath = options["configPath"] as? String {
       let url = URL(fileURLWithPath: configPath)
       do {
         let data = try Data(contentsOf: url)

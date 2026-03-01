@@ -20,6 +20,11 @@ macos_app_bundle="${MACOS_APP_BUNDLE:-build/macos/Build/Products/Release/xstream
 macos_build_lock_dir="${MACOS_BUILD_LOCK_DIR:-build/.macos-build.lock}"
 macos_build_lock_pid_file="${MACOS_BUILD_LOCK_PID_FILE:-${macos_build_lock_dir}/pid}"
 dmg_name="${DMG_NAME:-xstream-dev-${build_id}.dmg}"
+common_dart_defines=(
+  --dart-define=BRANCH_NAME="$branch"
+  --dart-define=BUILD_ID="$build_id"
+  --dart-define=BUILD_DATE="$build_date"
+)
 
 run_macos_build() {
   local target_arch="$1"
@@ -120,9 +125,7 @@ run_macos_build() {
 
   ./build_scripts/build_macos_xray_from_vendor.sh
   "$flutter_bin" build macos --release \
-    --dart-define=BRANCH_NAME="$branch" \
-    --dart-define=BUILD_ID="$build_id" \
-    --dart-define=BUILD_DATE="$build_date"
+    "${common_dart_defines[@]}"
 
   if [[ ! -d "$macos_app_bundle" ]]; then
     echo "❌ Build finished but app bundle was not found: ${macos_app_bundle}"
@@ -170,7 +173,7 @@ run_ios_install() {
     return 0
   fi
 
-  local device_id="${IOS_DEVICE:-$($flutter_bin devices | awk -F'•' '/• ios •/ && first=="" {gsub(/ /,"",$2); first=$2} END {print first}')}"
+  local device_id="${IOS_DEVICE:-$($flutter_bin devices | awk -F'•' '/• ios[[:space:]]*•/ && first=="" {gsub(/ /,"",$2); first=$2} END {print first}')}"
   device_id="${device_id//[[:space:]]/}"
   if [[ -z "$device_id" ]]; then
     echo "❌ No iOS device found. Connect an iPhone or set IOS_DEVICE=<udid>."
@@ -180,13 +183,13 @@ run_ios_install() {
   if [[ "$mode" == "debug" ]]; then
     echo "Installing debug build to iOS device: ${device_id}"
     if [[ "${IOS_NO_RESIDENT:-0}" == "1" ]]; then
-      "$flutter_bin" run -d "$device_id" --debug --no-resident
+      "$flutter_bin" run -d "$device_id" --debug --no-resident "${common_dart_defines[@]}"
     else
-      "$flutter_bin" run -d "$device_id" --debug
+      "$flutter_bin" run -d "$device_id" --debug "${common_dart_defines[@]}"
     fi
   else
     echo "Installing release build to iOS device: ${device_id}"
-    "$flutter_bin" build ios --release
+    "$flutter_bin" build ios --release "${common_dart_defines[@]}"
     xcrun devicectl device install app --device "$device_id" build/ios/iphoneos/Runner.app
     xcrun devicectl device process launch --device "$device_id" --terminate-existing plus.svc.xstream >/dev/null || true
   fi
@@ -256,7 +259,7 @@ case "$TARGET" in
   macos-debug-run)
     if [[ "$uname_s" == "Darwin" ]]; then
       echo "Run XStream on macOS (debug, no resident)..."
-      "$flutter_bin" run -d macos --debug --no-resident
+      "$flutter_bin" run -d macos --debug --no-resident "${common_dart_defines[@]}"
     else
       echo "macOS debug run is only supported on macOS"
     fi
@@ -269,7 +272,7 @@ case "$TARGET" in
       echo "Building for Windows (native)..."
       "$flutter_bin" pub get
       "$flutter_bin" pub outdated
-      "$flutter_bin" build windows --release
+      "$flutter_bin" build windows --release "${common_dart_defines[@]}"
     else
       echo "Windows build only supported on native Windows systems"
     fi
@@ -277,7 +280,7 @@ case "$TARGET" in
   linux-x64)
     if [[ "$uname_s" == "Linux" ]]; then
       echo "Building for Linux x64..."
-      "$flutter_bin" build linux --release --target-platform=linux-x64
+      "$flutter_bin" build linux --release --target-platform=linux-x64 "${common_dart_defines[@]}"
       mv build/linux/x64/release/bundle/xstream build/linux/x64/release/bundle/xstream-x64
     else
       echo "Linux x64 build only supported on Linux systems"
@@ -287,7 +290,7 @@ case "$TARGET" in
     if [[ "$uname_s" == "Linux" ]]; then
       if [[ "$uname_m" == "aarch64" || "$uname_m" == "arm64" ]]; then
         echo "Building for Linux arm64..."
-        "$flutter_bin" build linux --release --target-platform=linux-arm64
+        "$flutter_bin" build linux --release --target-platform=linux-arm64 "${common_dart_defines[@]}"
         mv build/linux/arm64/release/bundle/xstream build/linux/arm64/release/bundle/xstream-arm64
       else
         echo "❌ Cross-build from x64 to arm64 is not supported. Please run this on an arm64 host."
@@ -300,7 +303,7 @@ case "$TARGET" in
     if [[ "$uname_s" == "Linux" || "$uname_s" == "Darwin" ]]; then
       echo "Building for Android arm64..."
       ./build_scripts/build_android_xray.sh
-      "$flutter_bin" build apk --release
+      "$flutter_bin" build apk --release "${common_dart_defines[@]}"
     else
       echo "Android build not supported on this platform"
     fi
@@ -314,7 +317,7 @@ case "$TARGET" in
   ios-arm64)
     if [[ "$uname_s" == "Darwin" ]]; then
       echo "Building for iOS arm64..."
-      "$flutter_bin" build ios --release --no-codesign
+      "$flutter_bin" build ios --release --no-codesign "${common_dart_defines[@]}"
       (cd build/ios/iphoneos && zip -r xstream.app.zip Runner.app)
     else
       echo "iOS build only supported on macOS"

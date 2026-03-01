@@ -1,23 +1,23 @@
-# Makefile for XStream project
+.DEFAULT_GOAL := help
 
-FLUTTER = flutter
-PROJECT_NAME = XStream
-APP_NAME := Xstream
-ICON_SRC := assets/logo.png
-ICON_DST := macos/Runner/Assets.xcassets/AppIcon.appiconset
-MACOS_APP_BUNDLE := build/macos/Build/Products/Release/xstream.app
-MACOS_BUILD_LOCK_DIR := build/.macos-build.lock
-MACOS_BUILD_LOCK_PID_FILE := $(MACOS_BUILD_LOCK_DIR)/pid
-MAKE_SCRIPT_DIR := scripts/make
-RUN_TARGET_SCRIPT := $(MAKE_SCRIPT_DIR)/run-target.sh
+FLUTTER ?= flutter
+IOS_DEVICE ?=
+IOS_NO_RESIDENT ?= 0
+MCP_MODE ?= dev
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 
+MAKE_SCRIPT_DIR := scripts/make
+RUN_TARGET_SCRIPT := $(MAKE_SCRIPT_DIR)/run-target.sh
+
 BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 BUILD_ID := $(shell git rev-parse --short HEAD)
 BUILD_DATE := $(shell date "+%Y-%m-%d")
-MCP_MODE ?= dev
+
+MACOS_APP_BUNDLE := build/macos/Build/Products/Release/xstream.app
+MACOS_BUILD_LOCK_DIR := build/.macos-build.lock
+MACOS_BUILD_LOCK_PID_FILE := $(MACOS_BUILD_LOCK_DIR)/pid
 
 DMG_TAG := $(shell git describe --tags --exact-match 2>/dev/null || echo "")
 IS_MAIN := $(shell test "$(BRANCH)" = "main" && echo "yes" || echo "no")
@@ -32,84 +32,293 @@ DMG_NAME := $(shell \
 		echo "xstream-dev-$(BUILD_ID).dmg"; \
 	fi)
 
-.PHONY: all windows-icon icon fix-macos-signing macos-intel macos-arm64 macos-debug-run macos-vendor-xray windows-x64 linux-x64 linux-arm64 android-arm64 android-libxray android-apk ios-arm64 ios-ipa ios-install-debug ios-install-release ios-deploy-device mcp xcode-debug-bootstrap xcode-mcp-doctor xstream-mcp-install xstream-mcp-start xstream-mcp-start-dev xstream-mcp-start-runtime clean
+COMMON_ENV := FLUTTER="$(FLUTTER)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)"
+MACOS_ENV := UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" $(COMMON_ENV) DMG_NAME="$(DMG_NAME)" MACOS_APP_BUNDLE="$(MACOS_APP_BUNDLE)" MACOS_BUILD_LOCK_DIR="$(MACOS_BUILD_LOCK_DIR)" MACOS_BUILD_LOCK_PID_FILE="$(MACOS_BUILD_LOCK_PID_FILE)"
+WINDOWS_ENV := UNAME_S="$(UNAME_S)" OS="$(OS)" $(COMMON_ENV)
+LINUX_ENV := UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" $(COMMON_ENV)
+IOS_ENV := UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" IOS_DEVICE="$(IOS_DEVICE)" IOS_NO_RESIDENT="$(IOS_NO_RESIDENT)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)"
+ANDROID_ENV := UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)"
+MCP_ENV := MCP_MODE="$(MCP_MODE)" FLUTTER="$(FLUTTER)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)"
 
-all: macos-intel macos-arm64 windows-x64 linux-x64 linux-arm64 android-arm64 ios-arm64
+define run_target
+	@$(strip $(1)) $(RUN_TARGET_SCRIPT) $(2)
+endef
 
-windows-icon:
-	@$(RUN_TARGET_SCRIPT) windows-icon
+.PHONY: \
+	help clean icon \
+	build\:all build\:desktop build\:mobile \
+	build\:macos build\:macos\:x64 build\:macos\:arm64 build\:windows\:icon \
+	build\:windows build\:windows\:x64 \
+	build\:linux build\:linux\:x64 build\:linux\:arm64 \
+	build\:ios build\:ios\:app build\:ios\:ipa install\:ios\:debug install\:ios\:release deploy\:ios\:device \
+	build\:android build\:android\:apk build\:android\:libxray \
+	run\:macos\:debug fix\:macos\:signing \
+	all build-all build-desktop build-mobile \
+	build-macos build-macos-intel build-macos-arm64 run-macos-debug fix-macos-signing macos-vendor-xray windows-icon \
+	build-windows build-windows-x64 build-linux build-linux-x64 build-linux-arm64 \
+	build-ios build-ios-app build-ios-ipa install-ios-debug install-ios-release deploy-ios-device \
+	build-android build-android-apk build-android-libxray \
+	macos-intel macos-arm64 macos-debug-run windows-x64 linux-x64 linux-arm64 android-arm64 android-libxray android-apk ios-arm64 ios-ipa ios-install-debug ios-install-release ios-deploy-device \
+	mcp mcp-bootstrap mcp-doctor mcp-install mcp-start-dev mcp-start-runtime \
+	xcode-debug-bootstrap xcode-mcp-doctor xstream-mcp-install xstream-mcp-start xstream-mcp-start-dev xstream-mcp-start-runtime
 
-icon:
-	@FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) icon
-
-fix-macos-signing:
-	@FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) fix-macos-signing
-
-macos-intel:
-	@UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" FLUTTER="$(FLUTTER)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)" DMG_NAME="$(DMG_NAME)" MACOS_APP_BUNDLE="$(MACOS_APP_BUNDLE)" MACOS_BUILD_LOCK_DIR="$(MACOS_BUILD_LOCK_DIR)" MACOS_BUILD_LOCK_PID_FILE="$(MACOS_BUILD_LOCK_PID_FILE)" $(RUN_TARGET_SCRIPT) macos-intel
-
-macos-arm64:
-	@UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" FLUTTER="$(FLUTTER)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)" DMG_NAME="$(DMG_NAME)" MACOS_APP_BUNDLE="$(MACOS_APP_BUNDLE)" MACOS_BUILD_LOCK_DIR="$(MACOS_BUILD_LOCK_DIR)" MACOS_BUILD_LOCK_PID_FILE="$(MACOS_BUILD_LOCK_PID_FILE)" $(RUN_TARGET_SCRIPT) macos-arm64
-
-macos-debug-run:
-	@UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) macos-debug-run
-
-macos-vendor-xray:
-	@$(RUN_TARGET_SCRIPT) macos-vendor-xray
-
-windows-x64:
-	@UNAME_S="$(UNAME_S)" OS="$(OS)" FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) windows-x64
-
-linux-x64:
-	@UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) linux-x64
-
-linux-arm64:
-	@UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) linux-arm64
-
-android-arm64:
-	@UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) android-arm64
-
-android-libxray:
-	@$(RUN_TARGET_SCRIPT) android-libxray
-
-android-apk:
-	@$(RUN_TARGET_SCRIPT) android-apk
-
-ios-arm64:
-	@UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) ios-arm64
-
-ios-ipa:
-	@$(RUN_TARGET_SCRIPT) ios-ipa
-
-ios-install-debug:
-	@UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" IOS_DEVICE="$(IOS_DEVICE)" IOS_NO_RESIDENT="$(IOS_NO_RESIDENT)" $(RUN_TARGET_SCRIPT) ios-install-debug
-
-ios-install-release:
-	@UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" IOS_DEVICE="$(IOS_DEVICE)" $(RUN_TARGET_SCRIPT) ios-install-release
-
-ios-deploy-device:
-	@$(RUN_TARGET_SCRIPT) ios-deploy-device
-
-xcode-debug-bootstrap:
-	@MCP_MODE=bootstrap $(RUN_TARGET_SCRIPT) xcode-debug-bootstrap
-
-xcode-mcp-doctor:
-	@MCP_MODE=doctor $(RUN_TARGET_SCRIPT) xcode-mcp-doctor
-
-xstream-mcp-install:
-	@MCP_MODE=install $(RUN_TARGET_SCRIPT) xstream-mcp-install
-
-xstream-mcp-start:
-	@MCP_MODE=start-dev $(RUN_TARGET_SCRIPT) xstream-mcp-start
-
-xstream-mcp-start-dev:
-	@MCP_MODE=start-dev $(RUN_TARGET_SCRIPT) xstream-mcp-start-dev
-
-xstream-mcp-start-runtime:
-	@MCP_MODE=start-runtime $(RUN_TARGET_SCRIPT) xstream-mcp-start-runtime
-
-mcp:
-	@MCP_MODE="$(MCP_MODE)" $(RUN_TARGET_SCRIPT) mcp
+help:
+	@printf "Xstream build metadata: branch=%s build=%s date=%s\n\n" "$(BRANCH)" "$(BUILD_ID)" "$(BUILD_DATE)"
+	@printf '%s\n' \
+		'Usage: make <target>' \
+		'' \
+		'Build' \
+		'  build:all                 Build all supported desktop and mobile targets' \
+		'  build:desktop             Build macOS, Windows, and Linux targets' \
+		'  build:mobile              Build iOS and Android targets' \
+		'' \
+		'macOS' \
+		'  build:macos               Build all macOS release targets supported on the host' \
+		'  build:macos:x64           Build the macOS x64 release app and DMG on Intel Mac' \
+		'  build:macos:arm64         Build the macOS ARM64 release app and DMG on Apple Silicon' \
+		'  run:macos:debug           Launch the macOS app in Flutter debug mode' \
+		'  fix:macos:signing         Reset macOS signing-related state before a fresh build' \
+		'' \
+		'Windows' \
+		'  build:windows             Build all Windows targets supported on the host' \
+		'  build:windows:x64         Build the Windows x64 release bundle on native Windows' \
+		'  build:windows:icon        Regenerate the Windows .ico asset' \
+		'' \
+		'Linux' \
+		'  build:linux               Build all Linux targets supported on the host' \
+		'  build:linux:x64           Build the Linux x64 release bundle on Linux' \
+		'  build:linux:arm64         Build the Linux ARM64 release bundle on Linux ARM64' \
+		'' \
+		'iOS' \
+		'  build:ios                 Build the iOS app bundle and IPA on macOS' \
+		'  build:ios:app             Build the iOS release Runner.app bundle and zip payload' \
+		'  build:ios:ipa             Build the iOS release IPA package' \
+		'  install:ios:debug         Install a debug build to an attached iPhone' \
+		'  install:ios:release       Build and install a release build to an attached iPhone' \
+		'  deploy:ios:device         Run the custom iOS device deployment helper' \
+		'' \
+		'Android' \
+		'  build:android             Build Android release artifacts' \
+		'  build:android:apk         Build the Android release APK' \
+		'  build:android:libxray     Build Android libxray artifacts only' \
+		'' \
+		'Utility' \
+		'  icon                      Regenerate application icons for Flutter targets' \
+		'  clean                     Clean Flutter and generated build outputs'
 
 clean:
-	@FLUTTER="$(FLUTTER)" $(RUN_TARGET_SCRIPT) clean
+	$(call run_target,FLUTTER="$(FLUTTER)",clean)
+
+icon:
+	$(call run_target,FLUTTER="$(FLUTTER)",icon)
+
+build\:all:
+	@$(MAKE) 'build:desktop' 'build:mobile'
+
+build\:desktop:
+	@$(MAKE) 'build:macos' 'build:windows' 'build:linux'
+
+build\:mobile:
+	@$(MAKE) 'build:ios' 'build:android'
+
+build\:macos:
+	@$(MAKE) 'build:macos:x64' 'build:macos:arm64'
+
+build\:macos\:x64:
+	$(call run_target,$(MACOS_ENV),macos-intel)
+
+build\:macos\:arm64:
+	$(call run_target,$(MACOS_ENV),macos-arm64)
+
+run\:macos\:debug:
+	$(call run_target,UNAME_S="$(UNAME_S)" FLUTTER="$(FLUTTER)" BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)",macos-debug-run)
+
+fix\:macos\:signing:
+	$(call run_target,FLUTTER="$(FLUTTER)",fix-macos-signing)
+
+build\:windows:
+	@$(MAKE) 'build:windows:x64'
+
+build\:windows\:x64:
+	$(call run_target,$(WINDOWS_ENV),windows-x64)
+
+build\:windows\:icon:
+	$(call run_target,$(COMMON_ENV),windows-icon)
+
+build\:linux:
+	@$(MAKE) 'build:linux:x64' 'build:linux:arm64'
+
+build\:linux\:x64:
+	$(call run_target,$(LINUX_ENV),linux-x64)
+
+build\:linux\:arm64:
+	$(call run_target,$(LINUX_ENV),linux-arm64)
+
+build\:ios:
+	@$(MAKE) 'build:ios:app' 'build:ios:ipa'
+
+build\:ios\:app:
+	$(call run_target,$(IOS_ENV),ios-arm64)
+
+build\:ios\:ipa:
+	$(call run_target,$(COMMON_ENV),ios-ipa)
+
+install\:ios\:debug:
+	$(call run_target,$(IOS_ENV),ios-install-debug)
+
+install\:ios\:release:
+	$(call run_target,$(IOS_ENV),ios-install-release)
+
+deploy\:ios\:device:
+	$(call run_target,$(COMMON_ENV),ios-deploy-device)
+
+build\:android:
+	@$(MAKE) 'build:android:apk'
+
+build\:android\:apk:
+	$(call run_target,$(ANDROID_ENV),android-apk)
+
+build\:android\:libxray:
+	$(call run_target,$(COMMON_ENV),android-libxray)
+
+all:
+	@$(MAKE) 'build:all'
+
+build-all:
+	@$(MAKE) 'build:all'
+
+build-desktop:
+	@$(MAKE) 'build:desktop'
+
+build-mobile:
+	@$(MAKE) 'build:mobile'
+
+build-macos:
+	@$(MAKE) 'build:macos'
+
+build-macos-intel:
+	@$(MAKE) 'build:macos:x64'
+
+build-macos-arm64:
+	@$(MAKE) 'build:macos:arm64'
+
+run-macos-debug:
+	@$(MAKE) 'run:macos:debug'
+
+fix-macos-signing:
+	@$(MAKE) 'fix:macos:signing'
+
+macos-vendor-xray:
+	$(call run_target,$(COMMON_ENV),macos-vendor-xray)
+
+build-windows:
+	@$(MAKE) 'build:windows'
+
+build-windows-x64:
+	@$(MAKE) 'build:windows:x64'
+
+windows-icon:
+	@$(MAKE) 'build:windows:icon'
+
+build-linux:
+	@$(MAKE) 'build:linux'
+
+build-linux-x64:
+	@$(MAKE) 'build:linux:x64'
+
+build-linux-arm64:
+	@$(MAKE) 'build:linux:arm64'
+
+build-ios:
+	@$(MAKE) 'build:ios'
+
+build-ios-app:
+	@$(MAKE) 'build:ios:app'
+
+build-ios-ipa:
+	@$(MAKE) 'build:ios:ipa'
+
+install-ios-debug:
+	@$(MAKE) 'install:ios:debug'
+
+install-ios-release:
+	@$(MAKE) 'install:ios:release'
+
+deploy-ios-device:
+	@$(MAKE) 'deploy:ios:device'
+
+build-android:
+	@$(MAKE) 'build:android'
+
+build-android-apk:
+	@$(MAKE) 'build:android:apk'
+
+build-android-libxray:
+	@$(MAKE) 'build:android:libxray'
+
+macos-intel:
+	@$(MAKE) 'build:macos:x64'
+
+macos-arm64:
+	@$(MAKE) 'build:macos:arm64'
+
+macos-debug-run:
+	@$(MAKE) 'run:macos:debug'
+
+windows-x64:
+	@$(MAKE) 'build:windows:x64'
+
+linux-x64:
+	@$(MAKE) 'build:linux:x64'
+
+linux-arm64:
+	@$(MAKE) 'build:linux:arm64'
+
+android-arm64:
+	@$(MAKE) 'build:android:apk'
+
+android-libxray:
+	@$(MAKE) 'build:android:libxray'
+
+android-apk:
+	@$(MAKE) 'build:android:apk'
+
+ios-arm64:
+	@$(MAKE) 'build:ios:app'
+
+ios-ipa:
+	@$(MAKE) 'build:ios:ipa'
+
+ios-install-debug:
+	@$(MAKE) 'install:ios:debug'
+
+ios-install-release:
+	@$(MAKE) 'install:ios:release'
+
+ios-deploy-device:
+	@$(MAKE) 'deploy:ios:device'
+
+mcp:
+	$(call run_target,$(MCP_ENV),mcp)
+
+mcp-bootstrap:
+	$(call run_target,MCP_MODE=bootstrap $(COMMON_ENV),xcode-debug-bootstrap)
+
+mcp-doctor:
+	$(call run_target,MCP_MODE=doctor $(COMMON_ENV),xcode-mcp-doctor)
+
+mcp-install:
+	$(call run_target,MCP_MODE=install $(COMMON_ENV),xstream-mcp-install)
+
+mcp-start-dev:
+	$(call run_target,MCP_MODE=start-dev $(COMMON_ENV),xstream-mcp-start-dev)
+
+mcp-start-runtime:
+	$(call run_target,MCP_MODE=start-runtime $(COMMON_ENV),xstream-mcp-start-runtime)
+
+xcode-debug-bootstrap: mcp-bootstrap
+xcode-mcp-doctor: mcp-doctor
+xstream-mcp-install: mcp-install
+xstream-mcp-start: mcp-start-dev
+xstream-mcp-start-dev: mcp-start-dev
+xstream-mcp-start-runtime: mcp-start-runtime

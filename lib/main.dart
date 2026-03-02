@@ -303,7 +303,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     addAppLog('切换连接模式为 $mode');
 
     // Stop the active connection in the old mode so the user re-connects
-    // cleanly in the new mode.
+    // cleanly in the new mode, then auto reconnect using the same node.
     final activeNode = GlobalState.activeNodeName.value.trim();
     if (activeNode.isNotEmpty) {
       String stopMsg;
@@ -316,13 +316,37 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       }
       GlobalState.activeNodeName.value = '';
       addAppLog('[mode switch] $stopMsg');
+
+      final startMsg = tunnelEnabled
+          ? await NativeBridge.startNodeForTunnel(activeNode)
+          : await NativeBridge.startNodeService(activeNode);
+      final running = tunnelEnabled
+          ? !startMsg.contains('失败')
+          : await NativeBridge.checkNodeStatus(activeNode);
+      addAppLog('[mode switch] $startMsg');
+
+      if (running) {
+        GlobalState.activeNodeName.value = activeNode;
+      } else if (tunnelEnabled) {
+        final shouldShow = await PermissionGuideService
+            .shouldPromptForPacketTunnelAuthorization(
+          failureMessage: startMsg,
+        );
+        if (mounted && shouldShow) {
+          await showPermissionGuideDialog(
+            context,
+            failureMessage: startMsg,
+          );
+        }
+      }
     }
 
     _syncNativeMenuState();
     if (mounted) {
       final label = tunnelEnabled ? 'TUN 模式' : '代理模式';
+      final suffix = activeNode.isNotEmpty ? '，已自动重连' : '';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已切换到$label，请重新连接节点')),
+        SnackBar(content: Text('已切换到$label$suffix')),
       );
     }
   }
@@ -333,16 +357,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   ) async {
     switch (action) {
       case 'showMainWindow':
-        break;
-      case 'openLogs':
-        if (mounted) {
-          setState(() => _currentIndex = _settingsIndex(context));
-        }
-        break;
-      case 'editRules':
-        if (mounted) {
-          setState(() => _currentIndex = 1);
-        }
         break;
       case 'setProxyMode':
         final mode = (payload['mode'] as String?) ?? 'VPN';

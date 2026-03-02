@@ -127,25 +127,13 @@ class AppDelegate: FlutterAppDelegate {
     showWindowItem.target = self
     menu.addItem(showWindowItem)
 
-    let openLogsItem = NSMenuItem(title: "Open Logs", action: #selector(openLogs), keyEquivalent: "")
-    openLogsItem.target = self
-    menu.addItem(openLogsItem)
-
-    let editRulesItem = NSMenuItem(title: "Edit Rules", action: #selector(editRules), keyEquivalent: "")
-    editRulesItem.target = self
-    menu.addItem(editRulesItem)
-    menu.addItem(NSMenuItem.separator())
-
     launchAtLoginItem.target = self
     menu.addItem(launchAtLoginItem)
     menu.addItem(NSMenuItem.separator())
 
-    let quitStopItem = NSMenuItem(title: "Quit & Stop Acceleration", action: #selector(quitAndStopAcceleration), keyEquivalent: "")
+    let quitStopItem = NSMenuItem(title: "Quit & Stop Acceleration", action: #selector(quitAndStopAcceleration), keyEquivalent: "q")
     quitStopItem.target = self
     menu.addItem(quitStopItem)
-
-    let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-    menu.addItem(quitItem)
 
     return menu
   }
@@ -163,22 +151,6 @@ class AppDelegate: FlutterAppDelegate {
   @objc private func showMainWindowAndNotify() {
     showMainWindow()
     notifyFlutterMenuAction(action: "showMainWindow")
-  }
-
-  @objc private func openLogs() {
-    if let logsDir = resolveLogsDirectory() {
-      NSWorkspace.shared.open(logsDir)
-    }
-    showMainWindow()
-    notifyFlutterMenuAction(action: "openLogs")
-  }
-
-  @objc private func editRules() {
-    if let rulesFile = resolveRulesFile() {
-      NSWorkspace.shared.open(rulesFile)
-    }
-    showMainWindow()
-    notifyFlutterMenuAction(action: "editRules")
   }
 
   @objc private func selectTunMode() {
@@ -284,20 +256,6 @@ class AppDelegate: FlutterAppDelegate {
     let candidates = [
       appSupport.appendingPathComponent("\(bundleId)/vpn_nodes.json"),
       appSupport.appendingPathComponent("vpn_nodes.json")
-    ]
-    return candidates.first(where: { fileManager.fileExists(atPath: $0.path) })
-  }
-
-  private func resolveLogsDirectory() -> URL? {
-    let fileManager = FileManager.default
-    let bundleId = Bundle.main.bundleIdentifier ?? "com.xstream"
-    guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-      return nil
-    }
-
-    let candidates = [
-      appSupport.appendingPathComponent("\(bundleId)/logs", isDirectory: true),
-      appSupport.appendingPathComponent("logs", isDirectory: true)
     ]
     return candidates.first(where: { fileManager.fileExists(atPath: $0.path) })
   }

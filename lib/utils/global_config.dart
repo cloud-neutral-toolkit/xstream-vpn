@@ -60,6 +60,9 @@ class GlobalState {
   static const String tunnelConnectionMode = 'VPN';
   static const String proxyOnlyConnectionMode = '仅代理';
 
+  /// 是否在顶部栏显示解锁按钮（默认隐藏，在设置中心开启）
+  static final ValueNotifier<bool> showUnlockButton = ValueNotifier<bool>(false);
+
   /// 解锁状态（true 表示已解锁）
   static final ValueNotifier<bool> isUnlocked = ValueNotifier<bool>(false);
 

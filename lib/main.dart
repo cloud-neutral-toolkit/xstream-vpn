@@ -657,14 +657,19 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                 ),
               ),
               ValueListenableBuilder<bool>(
-                valueListenable: GlobalState.isUnlocked,
-                builder: (context, unlocked, _) {
-                  if (Platform.isIOS) {
+                valueListenable: GlobalState.showUnlockButton,
+                builder: (context, show, _) {
+                  if (!show || Platform.isIOS) {
                     return const SizedBox.shrink();
                   }
-                  return IconButton(
-                    icon: Icon(unlocked ? Icons.lock_open : Icons.lock),
-                    onPressed: unlocked ? _lock : _promptUnlockDialog,
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: GlobalState.isUnlocked,
+                    builder: (context, unlocked, _) {
+                      return IconButton(
+                        icon: Icon(unlocked ? Icons.lock_open : Icons.lock),
+                        onPressed: unlocked ? _lock : _promptUnlockDialog,
+                      );
+                    },
                   );
                 },
               ),

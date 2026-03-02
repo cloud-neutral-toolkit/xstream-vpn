@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/session/session_manager.dart';
+import '../services/sync/desktop_sync_service.dart';
+import '../services/sync/sync_state.dart';
 import '../l10n/app_localizations.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,6 +14,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final SessionManager _sessionManager = SessionManager.instance;
+  final DesktopSyncService _syncService = DesktopSyncService.instance;
   final TextEditingController _baseUrlController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -32,191 +36,52 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _handleEmailLogin() async {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(24),
-                topRight: Radius.circular(24),
-              ),
-            ),
-            padding: const EdgeInsets.all(24),
-            child: ValueListenableBuilder<SessionStatus>(
-              valueListenable: _sessionManager.status,
-              builder: (context, status, _) {
-                final isMfaRequired = status == SessionStatus.mfaRequired;
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      context.l10n.get('accountLogin'),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF222222),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: _baseUrlController,
-                      decoration: InputDecoration(
-                        labelText: context.l10n.get('serverAddress'),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _usernameController,
-                      enabled: !isMfaRequired,
-                      decoration: InputDecoration(
-                        labelText: context.l10n.get('accountOrEmail'),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      enabled: !isMfaRequired,
-                      decoration: InputDecoration(
-                        labelText: context.l10n.get('password'),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    if (isMfaRequired) ...[
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _mfaCodeController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: context.l10n.get('mfaCode'),
-                          helperText: context.l10n.get('mfaRequiredHint'),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: _sessionManager.loading,
-                      builder: (context, loading, _) {
-                        return ElevatedButton(
-                          onPressed: loading
-                              ? null
-                              : () async {
-                                  if (isMfaRequired) {
-                                    final result = await _sessionManager
-                                        .verifyMfaCode(_mfaCodeController.text);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(result.message)));
-                                      if (result.success) Navigator.pop(context);
-                                    }
-                                  } else {
-                                    await _sessionManager
-                                        .setBaseUrl(_baseUrlController.text);
-                                    final result = await _sessionManager.login(
-                                      identifier: _usernameController.text,
-                                      password: _passwordController.text,
-                                    );
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text(result.message)));
-                                      if (result.success && !result.mfaRequired) {
-                                        Navigator.pop(context);
-                                      }
-                                    }
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF222222),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: loading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Text(
-                                  context.l10n.get(
-                                      isMfaRequired ? 'verifyMfa' : 'login'),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
+  Future<void> _handleLogin() async {
+    final isMfaRequired = _sessionManager.isMfaRequired;
+    if (isMfaRequired) {
+      final result =
+          await _sessionManager.verifyMfaCode(_mfaCodeController.text);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(result.message)));
+      }
+    } else {
+      await _sessionManager.setBaseUrl(_baseUrlController.text);
+      final result = await _sessionManager.login(
+        identifier: _usernameController.text,
+        password: _passwordController.text,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(result.message)));
+      }
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await _sessionManager.logout();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.get('logoutSuccess'))),
+      );
+    }
+  }
+
+  Future<void> _handleSyncNow() async {
+    final result = await _syncService.syncNow(manual: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.message)),
     );
   }
 
-  Widget _buildSocialBtn(String iconName, String label, Color bgColor,
-      Color textColor, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Placeholder for actual icon assets
-            Icon(Icons.login, color: textColor, size: 20),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                color: textColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  String _formatDateTime(DateTime dt) {
+    final local = dt.toLocal();
+    return '${local.year}-${_pad(local.month)}-${_pad(local.day)} '
+        '${_pad(local.hour)}:${_pad(local.minute)}:${_pad(local.second)}';
   }
+
+  String _pad(int n) => n.toString().padLeft(2, '0');
 
   @override
   Widget build(BuildContext context) {
@@ -224,132 +89,346 @@ class _LoginScreenState extends State<LoginScreen> {
       valueListenable: _sessionManager.status,
       builder: (context, status, _) {
         final isLoggedIn = status == SessionStatus.loggedIn;
+        final isMfaRequired = status == SessionStatus.mfaRequired;
 
         if (isLoggedIn) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.person, size: 80, color: Color(0xFF4A6572)),
-                const SizedBox(height: 24),
-                Text(
-                  _sessionManager.currentUser.value ?? '',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _sessionManager.baseUrl.value,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    await _sessionManager.logout();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(context.l10n.get('logoutSuccess'))),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.logout),
-                  label: Text(context.l10n.get('logout')),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
+          return _buildLoggedInView(context);
         }
+        return _buildLoginForm(context, isMfaRequired);
+      },
+    );
+  }
 
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Spacer(),
-                const Text(
-                  'Welcome to',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w300,
-                    color: Color(0xFF666666),
+  Widget _buildLoggedInView(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 32),
+              const Icon(Icons.account_circle,
+                  size: 80, color: Color(0xFF5C6BC0)),
+              const SizedBox(height: 16),
+              Text(
+                _sessionManager.currentUser.value ?? '',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _sessionManager.baseUrl.value,
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+
+              // Sync status card
+              _buildSyncStatusCard(context),
+
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _syncService.syncing,
+                    builder: (context, syncing, _) {
+                      return ElevatedButton.icon(
+                        onPressed: syncing ? null : _handleSyncNow,
+                        icon: syncing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.sync),
+                        label: Text(syncing
+                            ? context.l10n.get('syncInProgress')
+                            : context.l10n.get('syncNow')),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF5C6BC0),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Cloud Neutral',
-                  style: TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF222222),
+                  const SizedBox(width: 16),
+                  OutlinedButton.icon(
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.logout),
+                    label: Text(context.l10n.get('logout')),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: Colors.redAccent),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 48),
-                _buildSocialBtn(
-                  'email',
-                  'Continue with Email',
-                  const Color(0xFF222222),
-                  Colors.white,
-                  _handleEmailLogin,
-                ),
-                const SizedBox(height: 16),
-                _buildSocialBtn(
-                  'google',
-                  'Continue with Google',
-                  Colors.white,
-                  const Color(0xFF222222),
-                  () {}, // Mock
-                ),
-                const SizedBox(height: 16),
-                _buildSocialBtn(
-                  'apple',
-                  'Continue with Apple',
-                  Colors.black,
-                  Colors.white,
-                  () {}, // Mock
-                ),
-                const SizedBox(height: 16),
-                _buildSocialBtn(
-                  'microsoft',
-                  'Continue with Microsoft',
-                  Colors.white,
-                  const Color(0xFF222222),
-                  () {}, // Mock
-                ),
-                const Spacer(flex: 2),
-                const Text(
-                  'By continuing, you agree to our Terms of Service and Privacy Policy.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSyncStatusCard(BuildContext context) {
+    return ValueListenableBuilder<SyncSummary>(
+      valueListenable: SyncStateStore.instance.summary,
+      builder: (context, summary, _) {
+        final lastSync = summary.lastSuccessAt != null
+            ? _formatDateTime(summary.lastSuccessAt!)
+            : context.l10n.get('never');
+        final metadata = summary.subscriptionMetadata;
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.sync, size: 18, color: Color(0xFF5C6BC0)),
+                  const SizedBox(width: 8),
+                  Text(
+                    context.l10n.get('desktopSync'),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _infoRow(context.l10n.get('lastSyncTime'), lastSync),
+              const SizedBox(height: 4),
+              _infoRow(context.l10n.get('configVersion'),
+                  '${summary.configVersion}'),
+              if (metadata != null && metadata.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                _infoRow(context.l10n.get('subscriptionMetadata'), metadata),
               ],
-            ),
+              if (summary.lastError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  summary.lastError!,
+                  style: const TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
           ),
         );
       },
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label: ',
+          style: const TextStyle(fontSize: 13, color: Colors.grey),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginForm(BuildContext context, bool isMfaRequired) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 48),
+              const Icon(Icons.cloud_outlined,
+                  size: 64, color: Color(0xFF5C6BC0)),
+              const SizedBox(height: 16),
+              Text(
+                context.l10n.get('accountLogin'),
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF222222),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.get('syncNotLoggedIn'),
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+
+              // Server address
+              TextField(
+                controller: _baseUrlController,
+                decoration: InputDecoration(
+                  labelText: context.l10n.get('serverAddress'),
+                  prefixIcon: const Icon(Icons.dns_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onSubmitted: (_) =>
+                    _sessionManager.setBaseUrl(_baseUrlController.text),
+              ),
+              const SizedBox(height: 16),
+
+              // Username / email
+              TextField(
+                controller: _usernameController,
+                enabled: !isMfaRequired,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [
+                  AutofillHints.username,
+                  AutofillHints.email,
+                ],
+                decoration: InputDecoration(
+                  labelText: context.l10n.get('accountOrEmail'),
+                  prefixIcon: const Icon(Icons.person_outline),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Password
+              TextField(
+                controller: _passwordController,
+                obscureText: true,
+                enabled: !isMfaRequired,
+                autofillHints: const [AutofillHints.password],
+                decoration: InputDecoration(
+                  labelText: context.l10n.get('password'),
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onSubmitted: (_) => _handleLogin(),
+              ),
+
+              // MFA code field
+              if (isMfaRequired) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _mfaCodeController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: context.l10n.get('mfaCode'),
+                    helperText: context.l10n.get('mfaRequiredHint'),
+                    prefixIcon: const Icon(Icons.verified_user_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onSubmitted: (_) => _handleLogin(),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              // Login button
+              ValueListenableBuilder<bool>(
+                valueListenable: _sessionManager.loading,
+                builder: (context, loading, _) {
+                  return ElevatedButton(
+                    onPressed: loading ? null : _handleLogin,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF5C6BC0),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            context.l10n.get(
+                                isMfaRequired ? 'verifyMfa' : 'login'),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  );
+                },
+              ),
+
+              // Error message
+              ValueListenableBuilder<String?>(
+                valueListenable: _sessionManager.lastError,
+                builder: (context, error, _) {
+                  if (error == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      error,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 13,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 48),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

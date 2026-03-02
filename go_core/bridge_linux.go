@@ -69,39 +69,40 @@ static void showWindow() {
 import "C"
 import (
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
+	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/getlantern/systray"
+	"github.com/xtls/libxray/xray"
 )
 
-var downloadMu sync.Mutex
-var downloading bool
+var procMap sync.Map
+var instMu sync.Mutex
 
-func runCommand(cmd string) (string, error) {
-	c := exec.Command("bash", "-c", cmd)
-	out, err := c.CombinedOutput()
-	return string(out), err
+func startXrayInternal(cfgData []byte) error {
+	if xray.GetXrayState() {
+		return errors.New("already running")
+	}
+	return xray.RunXrayFromJSON("", "", string(cfgData))
 }
 
-func runPrivilegedWrite(path, content, password string) error {
-	dir := filepath.Dir(path)
-	mkdirCmd := fmt.Sprintf("echo \"%s\" | sudo -S mkdir -pv \"%s\"", password, dir)
-	if _, err := runCommand(mkdirCmd); err != nil {
-		return err
+func stopXrayInternal() error {
+	if !xray.GetXrayState() {
+		return errors.New("not running")
 	}
-	escaped := strings.ReplaceAll(content, "\"", "\\\"")
-	cmd := fmt.Sprintf("echo \"%s\" | sudo -S bash -c 'echo \"%s\" > \"%s\"'", password, escaped, path)
-	_, err := runCommand(cmd)
-	return err
+	return xray.StopXray()
+}
+
+func clearNodeRegistry() {
+	procMap.Range(func(key, value any) bool {
+		procMap.Delete(key)
+		return true
+	})
 }
 
 //export WriteConfigFiles
@@ -112,15 +113,25 @@ func WriteConfigFiles(xrayPathC, xrayContentC, servicePathC, serviceContentC, vp
 	serviceContent := C.GoString(serviceContentC)
 	vpnPath := C.GoString(vpnPathC)
 	vpnContent := C.GoString(vpnContentC)
-	password := C.GoString(passwordC)
-	if err := runPrivilegedWrite(xrayPath, xrayContent, password); err != nil {
+	_ = passwordC
+
+	if err := os.MkdirAll(filepath.Dir(xrayPath), 0755); err != nil {
 		return C.CString("error:" + err.Error())
 	}
-	if err := runPrivilegedWrite(servicePath, serviceContent, password); err != nil {
+	if err := os.WriteFile(xrayPath, []byte(xrayContent), 0644); err != nil {
+		return C.CString("error:" + err.Error())
+	}
+	if err := os.MkdirAll(filepath.Dir(servicePath), 0755); err != nil {
+		return C.CString("error:" + err.Error())
+	}
+	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
+		return C.CString("error:" + err.Error())
+	}
+	if err := os.MkdirAll(filepath.Dir(vpnPath), 0755); err != nil {
 		return C.CString("error:" + err.Error())
 	}
 	var existing []map[string]interface{}
-	if data, err := ioutil.ReadFile(vpnPath); err == nil {
+	if data, err := os.ReadFile(vpnPath); err == nil {
 		json.Unmarshal(data, &existing)
 	}
 	var newNodes []map[string]interface{}
@@ -130,135 +141,113 @@ func WriteConfigFiles(xrayPathC, xrayContentC, servicePathC, serviceContentC, vp
 		return C.CString("error:invalid vpn node content")
 	}
 	updated, _ := json.MarshalIndent(existing, "", "  ")
-	if err := runPrivilegedWrite(vpnPath, string(updated), password); err != nil {
+	if err := os.WriteFile(vpnPath, updated, 0644); err != nil {
 		return C.CString("error:" + err.Error())
 	}
 	return C.CString("success")
 }
 
-func downloadAndInstallXray() error {
-	cmd := fmt.Sprintf("curl -L %s/xray-core/v25.3.6/Xray-linux-64.zip -o Xray-linux-64.zip && "+
-		"mkdir -pv /opt/bin/ && "+
-		"unzip -o Xray-linux-64.zip && "+
-		"cp Xray-linux-64/xray /opt/bin/xray && chmod +x /opt/bin/xray", artifactBaseURL)
-	_, err := runCommand(cmd)
-	return err
-}
-
 //export StartNodeService
-func StartNodeService(serviceC *C.char) *C.char {
-	service := C.GoString(serviceC)
-	cmd := fmt.Sprintf("systemctl --user start %s", service)
-	out, err := runCommand(cmd)
-	if err != nil {
-		return C.CString("error:" + out)
+func StartNodeService(name *C.char) *C.char {
+	instMu.Lock()
+	defer instMu.Unlock()
+
+	node := C.GoString(name)
+	if _, ok := procMap.Load(node); ok && xray.GetXrayState() {
+		return C.CString("success")
 	}
+	if xray.GetXrayState() {
+		return C.CString("error:already running")
+	}
+
+	configPath := filepath.Join(os.TempDir(), node+".json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return C.CString("error:" + err.Error())
+	}
+	if err := startXrayInternal(data); err != nil {
+		return C.CString("error:" + err.Error())
+	}
+	procMap.Store(node, true)
 	return C.CString("success")
 }
 
 //export StopNodeService
-func StopNodeService(serviceC *C.char) *C.char {
-	service := C.GoString(serviceC)
-	cmd := fmt.Sprintf("systemctl --user stop %s", service)
-	out, err := runCommand(cmd)
-	if err != nil {
-		return C.CString("error:" + out)
+func StopNodeService(name *C.char) *C.char {
+	instMu.Lock()
+	defer instMu.Unlock()
+
+	node := C.GoString(name)
+	if _, ok := procMap.Load(node); ok {
+		if xray.GetXrayState() {
+			if err := stopXrayInternal(); err != nil {
+				return C.CString("error:" + err.Error())
+			}
+		}
+		procMap.Delete(node)
+		return C.CString("success")
 	}
+	if xray.GetXrayState() {
+		if err := stopXrayInternal(); err != nil {
+			return C.CString("error:" + err.Error())
+		}
+	}
+	clearNodeRegistry()
 	return C.CString("success")
 }
 
 //export CheckNodeStatus
-func CheckNodeStatus(serviceC *C.char) C.int {
-	service := C.GoString(serviceC)
-	cmd := fmt.Sprintf("systemctl --user is-active %s", service)
-	out, err := runCommand(cmd)
-	if err != nil {
-		return -1
-	}
-	if strings.Contains(out, "active") {
+func CheckNodeStatus(name *C.char) C.int {
+	node := C.GoString(name)
+	if _, ok := procMap.Load(node); ok && xray.GetXrayState() {
 		return 1
 	}
 	return 0
 }
 
-//export InitXray
-func InitXray() *C.char {
-	dest := "/opt/bin/xray"
-	if _, err := os.Stat(dest); err == nil {
-		return C.CString("success")
+//export PerformAction
+func PerformAction(action, password *C.char) *C.char {
+	act := C.GoString(action)
+	if act == "isXrayDownloading" {
+		return C.CString("0")
 	}
-
-	downloadMu.Lock()
-	defer downloadMu.Unlock()
-	if downloading {
-		return C.CString("info:downloading in background")
-	}
-	downloading = true
-	go func() {
-		defer func() {
-			downloadMu.Lock()
-			downloading = false
-			downloadMu.Unlock()
-		}()
-		if err := downloadAndInstallXray(); err != nil {
-			fmt.Println("Download failed:", err)
-		}
-	}()
-	return C.CString("info:download started")
-}
-
-//export UpdateXrayCore
-func UpdateXrayCore() *C.char {
-	downloadMu.Lock()
-	defer downloadMu.Unlock()
-	if downloading {
-		return C.CString("info:downloading in background")
-	}
-	downloading = true
-	go func() {
-		defer func() {
-			downloadMu.Lock()
-			downloading = false
-			downloadMu.Unlock()
-		}()
-		if err := downloadAndInstallXray(); err != nil {
-			fmt.Println("Download failed:", err)
-		}
-	}()
-	return C.CString("info:download started")
+	return C.CString("error:unsupported")
 }
 
 //export IsXrayDownloading
-func IsXrayDownloading() C.int {
-	downloadMu.Lock()
-	d := downloading
-	downloadMu.Unlock()
-	if d {
-		return 1
-	}
-	return 0
-}
+func IsXrayDownloading() C.int { return 0 }
 
-//export ResetXrayAndConfig
-func ResetXrayAndConfig(passwordC *C.char) *C.char {
-	password := C.GoString(passwordC)
-	home, _ := os.UserHomeDir()
-	script := fmt.Sprintf("rm -f %s/.local/bin/xray ; sudo -S rm -f /usr/local/bin/xray <<< \"%s\" ; rm -rf %s/.config/xray-vpn-node*", home, password, home)
-	out, err := runCommand(script)
-	if err != nil {
-		return C.CString("error:" + out)
+//export FreeCString
+func FreeCString(str *C.char) { C.free(unsafe.Pointer(str)) }
+
+//export StartXray
+func StartXray(configC *C.char) *C.char {
+	instMu.Lock()
+	defer instMu.Unlock()
+
+	if xray.GetXrayState() {
+		return C.CString("error:already running")
+	}
+	cfgData := []byte(C.GoString(configC))
+	if err := startXrayInternal(cfgData); err != nil {
+		return C.CString("error:" + err.Error())
 	}
 	return C.CString("success")
 }
 
-//export StartXray
-func StartXray(configC *C.char) *C.char {
-	return C.CString("error:not supported")
-}
-
 //export StopXray
 func StopXray() *C.char {
-	return C.CString("error:not supported")
+	instMu.Lock()
+	defer instMu.Unlock()
+
+	if !xray.GetXrayState() {
+		return C.CString("error:not running")
+	}
+	if err := stopXrayInternal(); err != nil {
+		return C.CString("error:" + err.Error())
+	}
+	clearNodeRegistry()
+	return C.CString("success")
 }
 
 // ---- System tray integration ----

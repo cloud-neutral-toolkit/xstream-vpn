@@ -113,7 +113,7 @@ class SessionManager {
       }
       if (response.statusCode == 404) {
         final body404 = _parseBody(response.body);
-        final code404 = body404['code'] as String? ?? '';
+        final code404 = body404['error'] as String? ?? '';
         final msg404 = body404['message'] as String? ?? '';
         if (code404 == 'user_not_found' || msg404.contains('not found')) {
           lastError.value = msg404.isNotEmpty ? msg404 : '用户不存在';

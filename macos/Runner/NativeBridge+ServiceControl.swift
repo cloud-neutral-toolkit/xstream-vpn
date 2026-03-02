@@ -480,33 +480,16 @@ extension AppDelegate {
   }
 
   private func resolvedXrayExecutablePath() -> String? {
-    let fileManager = FileManager.default
     guard let bundledPath = resolvedBundledXrayPath() else {
       return nil
     }
-
-    let binDir = resolvedExecutableStagingDir()
-    let stagedPath = binDir.appendingPathComponent("xray").path
-
-    if fileManager.isExecutableFile(atPath: stagedPath) {
-      return stagedPath
+    let fileManager = FileManager.default
+    guard fileManager.isExecutableFile(atPath: bundledPath) else {
+      logToFlutter("error", "bundled xray is not executable: \(bundledPath)")
+      return nil
     }
-
-    if !fileManager.fileExists(atPath: stagedPath) {
-      guard stageBundledXrayToAppSupport(sourcePath: bundledPath, targetPath: stagedPath, binDir: binDir) else {
-        return fileManager.isExecutableFile(atPath: bundledPath) ? bundledPath : nil
-      }
-      return stagedPath
-    }
-
-    if ensureExecutable(path: stagedPath) {
-      return stagedPath
-    }
-
-    guard stageBundledXrayToAppSupport(sourcePath: bundledPath, targetPath: stagedPath, binDir: binDir) else {
-      return fileManager.isExecutableFile(atPath: bundledPath) ? bundledPath : nil
-    }
-    return stagedPath
+    // App Store compliance: run only the bundled, signed executable.
+    return bundledPath
   }
 
   private func shellEscaped(_ value: String) -> String {
@@ -583,87 +566,6 @@ extension AppDelegate {
         "\(resourcePath)/xray.x86_64",
       ]
     return candidates.first(where: { FileManager.default.fileExists(atPath: $0) })
-  }
-
-  private func ensureExecutable(path: String) -> Bool {
-    let fileManager = FileManager.default
-    guard fileManager.fileExists(atPath: path) else { return false }
-    if fileManager.isExecutableFile(atPath: path) {
-      return true
-    }
-    do {
-      try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
-      return fileManager.isExecutableFile(atPath: path)
-    } catch {
-      let chmod = Process()
-      chmod.launchPath = "/bin/chmod"
-      chmod.arguments = ["755", path]
-      do {
-        try chmod.run()
-        chmod.waitUntilExit()
-        if chmod.terminationStatus == 0, fileManager.isExecutableFile(atPath: path) {
-          return true
-        }
-      } catch {
-        // Fall through and log below.
-      }
-      logToFlutter("error", "set executable failed: \(path), error=\(error.localizedDescription)")
-      return false
-    }
-  }
-
-  private func stageBundledXrayToAppSupport(sourcePath: String, targetPath: String, binDir: URL) -> Bool {
-    let fileManager = FileManager.default
-    do {
-      if fileManager.fileExists(atPath: targetPath) {
-        try fileManager.removeItem(atPath: targetPath)
-      }
-      try fileManager.copyItem(atPath: sourcePath, toPath: targetPath)
-      guard ensureExecutable(path: targetPath) else {
-        return false
-      }
-
-      if let resourcePath = Bundle.main.resourcePath {
-        for datName in ["geoip.dat", "geosite.dat"] {
-          let sourceCandidates = [
-            URL(fileURLWithPath: resourcePath).appendingPathComponent(datName),
-            URL(fileURLWithPath: resourcePath)
-              .appendingPathComponent("xray", isDirectory: true)
-              .appendingPathComponent(datName),
-          ]
-          if let source = sourceCandidates.first(where: { fileManager.fileExists(atPath: $0.path) }) {
-            let destination = binDir.appendingPathComponent(datName)
-            if fileManager.fileExists(atPath: destination.path) {
-              try? fileManager.removeItem(at: destination)
-            }
-            try? fileManager.copyItem(at: source, to: destination)
-          }
-        }
-      }
-
-      return true
-    } catch {
-      logToFlutter("error", "stage bundled xray failed: \(error.localizedDescription)")
-      return false
-    }
-  }
-
-  private func resolvedExecutableStagingDir() -> URL {
-    let fileManager = FileManager.default
-    if let root = resolvedAppSupportRoot() {
-      let dir = root.appendingPathComponent("bin", isDirectory: true)
-      do {
-        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-      } catch {
-        logToFlutter("warn", "app support bin unavailable, fallback to tmp: \(error.localizedDescription)")
-      }
-    }
-    let fallback = fileManager.temporaryDirectory
-      .appendingPathComponent("xstream-runtime", isDirectory: true)
-      .appendingPathComponent("bin", isDirectory: true)
-    try? fileManager.createDirectory(at: fallback, withIntermediateDirectories: true)
-    return fallback
   }
 
   private func resolvedRuntimeBaseDir() -> URL {

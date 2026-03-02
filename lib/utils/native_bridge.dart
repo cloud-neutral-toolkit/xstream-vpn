@@ -517,33 +517,6 @@ class NativeBridge {
     } catch (_) {}
   }
 
-  /// 更新 Xray Core：触发 performAction:updateXrayCore
-  static Future<String> updateXrayCore() async {
-    if (!_isDesktop) return '当前平台暂不支持';
-    if (_useFfi) {
-      final actionPtr = 'updateXrayCore'.toNativeUtf8();
-      final empty = ''.toNativeUtf8();
-      final resPtr = _ffi.performAction(actionPtr.cast(), empty.cast());
-      final result = resPtr.cast<Utf8>().toDartString();
-      _ffi.freeCString(resPtr);
-      malloc.free(actionPtr);
-      malloc.free(empty);
-      return result;
-    } else {
-      try {
-        final result = await _channel.invokeMethod<String>(
-          'performAction',
-          {'action': 'updateXrayCore'},
-        );
-        return result ?? '更新完成';
-      } on MissingPluginException {
-        return '插件未实现';
-      } catch (e) {
-        return '更新失败: $e';
-      }
-    }
-  }
-
   /// 查询 Xray Core 是否正在下载
   static Future<bool> isXrayDownloading() async {
     if (!_isDesktop) return false;

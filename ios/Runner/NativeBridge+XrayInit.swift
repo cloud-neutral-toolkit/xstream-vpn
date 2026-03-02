@@ -12,7 +12,7 @@ extension AppDelegate {
     switch action {
     case "isXrayDownloading":
       result("0")
-    case "initXray", "updateXrayCore", "resetXrayAndConfig":
+    case "initXray", "resetXrayAndConfig":
       result("iOS not supported")
     default:
       result(FlutterError(code: "UNKNOWN_ACTION", message: "Unsupported action", details: action))

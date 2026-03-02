@@ -1,3 +1,16 @@
+# XStream v1.0.3
+
+_Release Date: 2026-03-02_
+
+## ✨ Features
+- Added a reusable global breadcrumb navigation component for app-level and subpage navigation context
+- Added breadcrumb headers for Logs, Help, and About pages, including Settings-driven navigation paths
+
+## ✅ Changes
+- Fine-tuned Logs page readability on iPhone and desktop with controlled text scaling, wrapped action buttons, and horizontal scroll support for long log lines
+- Kept log display in monospaced style and improved visual consistency of the log container
+- Bumped app version to `1.0.3+5` for macOS/iOS build metadata alignment
+
 # XStream v0.3.0 - Preview Release
 
 _Release Date: 2026-02-28_

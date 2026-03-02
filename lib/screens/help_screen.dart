@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../l10n/app_localizations.dart';
 import '../utils/global_config.dart';
+import '../widgets/app_breadcrumb.dart';
 
 class HelpScreen extends StatefulWidget {
-  const HelpScreen({super.key});
+  const HelpScreen({super.key, this.breadcrumbItems});
+
+  final List<String>? breadcrumbItems;
 
   @override
   State<HelpScreen> createState() => _HelpScreenState();
@@ -55,7 +58,13 @@ class _HelpScreenState extends State<HelpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.l10n.get('help')),
+        title: AppBreadcrumb(
+          items: widget.breadcrumbItems ??
+              [
+                context.l10n.get('home'),
+                context.l10n.get('help'),
+              ],
+        ),
       ),
       body: FutureBuilder<_HelpPaths>(
         future: _pathsFuture,

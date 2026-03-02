@@ -67,43 +67,70 @@ class LogConsoleState extends State<LogConsole> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            ElevatedButton(
-              onPressed: clearLogs,
-              child: Text(context.l10n.get('clearLogs')),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: exportLogs,
-              child: Text(context.l10n.get('exportLogs')),
-            ),
-          ],
+    final mediaQuery = MediaQuery.of(context);
+    return MediaQuery(
+      data: mediaQuery.copyWith(
+        textScaler: mediaQuery.textScaler.clamp(
+          minScaleFactor: 1.0,
+          maxScaleFactor: 1.2,
         ),
-        const SizedBox(height: 8),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(8.0),
-            color: Colors.black87,
-            child: ListView.builder(
-              itemCount: _logs.length,
-              itemBuilder: (context, index) {
-                final log = _logs[index];
-                return Text(
-                  log.formatted,
-                  style: TextStyle(
-                    color: _getColor(log.level),
-                    fontFamily: 'monospace',
-                  ),
-                );
-              },
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton(
+                onPressed: clearLogs,
+                child: Text(
+                  context.l10n.get('clearLogs'),
+                  textScaler: TextScaler.noScaling,
+                ),
+              ),
+              ElevatedButton(
+                onPressed: exportLogs,
+                child: Text(
+                  context.l10n.get('exportLogs'),
+                  textScaler: TextScaler.noScaling,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ListView.separated(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                itemCount: _logs.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
+                itemBuilder: (context, index) {
+                  final log = _logs[index];
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SelectableText(
+                      log.formatted,
+                      textScaler: TextScaler.noScaling,
+                      style: TextStyle(
+                        color: _getColor(log.level),
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

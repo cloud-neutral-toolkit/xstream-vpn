@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
 import '../utils/global_config.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/app_breadcrumb.dart';
 
 class AboutScreen extends StatelessWidget {
-  const AboutScreen({super.key});
+  const AboutScreen({super.key, this.breadcrumbItems});
+
+  final List<String>? breadcrumbItems;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.l10n.get('about')),
+        title: AppBreadcrumb(
+          items: breadcrumbItems ??
+              [
+                context.l10n.get('home'),
+                context.l10n.get('about'),
+              ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

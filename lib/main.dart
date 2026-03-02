@@ -23,6 +23,7 @@ import 'services/sync/desktop_sync_service.dart';
 import 'services/tun_settings_service.dart';
 import 'widgets/permission_guide_dialog.dart';
 import 'widgets/log_console.dart' show LogLevel;
+import 'widgets/app_breadcrumb.dart';
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -490,6 +491,15 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     return labels[_currentIndex.clamp(0, labels.length - 1)];
   }
 
+  List<String> _currentBreadcrumbItems(BuildContext context) {
+    final current = _currentPageTitle(context);
+    final home = context.l10n.get('home');
+    if (current == home) {
+      return [home];
+    }
+    return [home, current];
+  }
+
   // Drawer removed in favor of NavigationBar
 
   PopupMenuItem<_AddNodeMenuAction> _buildAddNodeItem(
@@ -555,7 +565,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(isMobile ? _currentPageTitle(context) : ''),
+            title: AppBreadcrumb(
+              items: _currentBreadcrumbItems(context),
+              compact: isMobile,
+            ),
             actions: [
               ValueListenableBuilder<Locale>(
                 valueListenable: GlobalState.locale,

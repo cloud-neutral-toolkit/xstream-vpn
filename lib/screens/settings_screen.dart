@@ -134,19 +134,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _openHelpPage() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const HelpScreen()),
+      MaterialPageRoute(
+        builder: (_) => HelpScreen(
+          breadcrumbItems: [
+            context.l10n.get('settings'),
+            context.l10n.get('help'),
+          ],
+        ),
+      ),
     );
   }
 
   Future<void> _openAboutPage() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AboutScreen()),
+      MaterialPageRoute(
+        builder: (_) => AboutScreen(
+          breadcrumbItems: [
+            context.l10n.get('settings'),
+            context.l10n.get('about'),
+          ],
+        ),
+      ),
     );
   }
 
   Future<void> _openLogsPage() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const LogsScreen()),
+      MaterialPageRoute(
+        builder: (_) => LogsScreen(
+          breadcrumbItems: [
+            context.l10n.get('settings'),
+            context.l10n.get('logs'),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1114,7 +1135,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       secondary: const Icon(Icons.lock),
                       value: show,
                       onChanged: (value) {
-                        setState(() => GlobalState.showUnlockButton.value = value);
+                        setState(
+                            () => GlobalState.showUnlockButton.value = value);
                         if (!value) {
                           GlobalState.isUnlocked.value = false;
                           GlobalState.sudoPassword.value = '';

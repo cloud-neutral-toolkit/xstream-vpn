@@ -36,8 +36,38 @@ for s in $services; do
 done
 """
     }
-    let escaped = script.replacingOccurrences(of: "\"", with: "\\\"")
-    let command = "echo \"\(password)\" | sudo -S bash -c \"\(escaped)\""
-    runShellScript(command: command, returnsBool: false, result: result)
+
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+    task.arguments = ["-S", "/bin/bash", "-c", script]
+
+    let outputPipe = Pipe()
+    let inputPipe = Pipe()
+    task.standardOutput = outputPipe
+    task.standardError = outputPipe
+    task.standardInput = inputPipe
+
+    do {
+      try task.run()
+      let stdin = inputPipe.fileHandleForWriting
+      if let passwordData = (password + "\n").data(using: .utf8) {
+        stdin.write(passwordData)
+      }
+      stdin.closeFile()
+
+      task.waitUntilExit()
+      let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+      let output = String(data: data, encoding: .utf8) ?? ""
+      if task.terminationStatus == 0 {
+        result("success")
+        logToFlutter("info", "setSystemProxy success")
+      } else {
+        result(FlutterError(code: "EXEC_FAILED", message: "Command failed", details: output))
+        logToFlutter("error", "setSystemProxy failed: \(output)")
+      }
+    } catch {
+      result(FlutterError(code: "EXEC_ERROR", message: "Process failed to run", details: error.localizedDescription))
+      logToFlutter("error", "setSystemProxy process error: \(error.localizedDescription)")
+    }
   }
 }

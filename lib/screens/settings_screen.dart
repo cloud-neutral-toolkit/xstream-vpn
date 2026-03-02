@@ -9,8 +9,6 @@ import '../../utils/native_bridge.dart';
 import '../../services/app_version_service.dart';
 import '../l10n/app_localizations.dart';
 import '../../services/vpn_config_service.dart';
-import '../../services/update/update_checker.dart';
-import '../../services/update/update_platform.dart';
 import '../../services/telemetry/telemetry_service.dart';
 import '../../services/session/session_manager.dart';
 import '../../services/sync/desktop_sync_service.dart';
@@ -437,10 +435,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  String _currentVersion() {
-    return AppVersionService.currentVersion;
-  }
-
   Future<void> _onSyncConfig() async {
     addAppLog('开始同步配置...');
     try {
@@ -726,17 +720,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _tunStatus = status;
       GlobalState.tunSettingsEnabled.value = connected;
     });
-  }
-
-  void _onCheckUpdate() {
-    addAppLog('开始检查更新...');
-    UpdateChecker.manualCheck(
-      context,
-      currentVersion: _currentVersion(),
-      channel: GlobalState.useDailyBuild.value
-          ? UpdateChannel.latest
-          : UpdateChannel.stable,
-    );
   }
 
   Future<void> _toggleRuntimeMcp(bool enabled) async {
@@ -1080,22 +1063,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               child: Column(
                 children: [
-                  SwitchListTile(
-                    secondary: const Icon(Icons.bolt),
-                    title: Text(context.l10n.get('upgradeDaily')),
-                    value: GlobalState.useDailyBuild.value,
-                    onChanged: (v) {
-                      setState(() => GlobalState.useDailyBuild.value = v);
-                    },
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  ListTile(
-                    leading: const Icon(Icons.system_update),
-                    title: Text(context.l10n.get('checkUpdate')),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _onCheckUpdate,
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
                   ListTile(
                     leading: const Icon(Icons.article_outlined),
                     title: Text(context.l10n.get('logs')),
@@ -1437,16 +1404,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             const Divider(height: 32),
-            SwitchListTile(
-              secondary: const Icon(Icons.bolt),
-              title:
-                  Text(context.l10n.get('upgradeDaily'), style: _menuTextStyle),
-              value: GlobalState.useDailyBuild.value,
-              onChanged: (v) {
-                setState(() => GlobalState.useDailyBuild.value = v);
-                addAppLog('升级 DailyBuild: ${v ? "开启" : "关闭"}');
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.stacked_line_chart),
               title: Text(context.l10n.get('viewCollected'),
@@ -1459,12 +1416,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               onTap: _showTelemetryData,
-            ),
-            ListTile(
-              leading: const Icon(Icons.system_update),
-              title:
-                  Text(context.l10n.get('checkUpdate'), style: _menuTextStyle),
-              onTap: _onCheckUpdate,
             ),
           ],
         ),

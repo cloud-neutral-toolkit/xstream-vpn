@@ -6,9 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/dns/dns_control_plane.dart';
 import '../widgets/log_console.dart';
 
-const String kArtifactBaseUrl = 'https://artifact.svc.plus';
-const String kUpdateBaseUrl = '$kArtifactBaseUrl/';
-
 // LogConsole Global Key
 final GlobalKey<LogConsoleState> logConsoleKey = GlobalKey<LogConsoleState>();
 
@@ -61,16 +58,14 @@ class GlobalState {
   static const String proxyOnlyConnectionMode = '仅代理';
 
   /// 是否在顶部栏显示解锁按钮（默认隐藏，在设置中心开启）
-  static final ValueNotifier<bool> showUnlockButton = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> showUnlockButton =
+      ValueNotifier<bool>(false);
 
   /// 解锁状态（true 表示已解锁）
   static final ValueNotifier<bool> isUnlocked = ValueNotifier<bool>(false);
 
   /// 当前解锁使用的 sudo 密码（可供原生调用或配置操作使用）
   static final ValueNotifier<String> sudoPassword = ValueNotifier<String>('');
-
-  /// 升级渠道：true 表示检查 DailyBuild，false 只检查 release
-  static final ValueNotifier<bool> useDailyBuild = ValueNotifier<bool>(false);
 
   /// 调试模式开关，由 `--debug` 参数控制
   static final ValueNotifier<bool> debugMode = ValueNotifier<bool>(false);

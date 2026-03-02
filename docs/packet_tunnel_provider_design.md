@@ -14,7 +14,7 @@ This document describes the design and architecture for the `PacketTunnelProvide
 The PacketTunnelProvider must adhere to the global semantics and usage constraints outlined in `AGENTS.md`:
 
 * **Only use NEPacketTunnelProvider**: This is the only permitted API for system-wide networking. No user-space TUN hacks, SOCKS forwarding, or sudo routing is allowed.
-* **Consistent semantics**: Networking features are designed as a secure tunnel, avoiding any wording or implementation that implies censorship, bypass, or geo-specific behavior.
+* **Consistent semantics**: Networking features are designed as a secure tunnel, avoiding non-neutral wording or environment-specific interpretations.
 * **DNS is part of the tunnel**: DNS handling occurs within the tunnel and is never treated as a workaround.
 
 ## Interaction with Go core and Flutter

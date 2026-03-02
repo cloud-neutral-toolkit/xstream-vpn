@@ -31,12 +31,8 @@ extension AppDelegate {
       return
     }
 
-    let runtimeConfig = root.appendingPathComponent("configs/config.json").path
-    let stop = Process()
-    stop.launchPath = "/bin/zsh"
-    stop.arguments = ["-c", "pkill -f \"run -c \(runtimeConfig)\" || true"]
-    try? stop.run()
-    stop.waitUntilExit()
+    _ = stopDirectXray()
+    killOrphanXrayProcesses()
 
     do {
       let fm = FileManager.default

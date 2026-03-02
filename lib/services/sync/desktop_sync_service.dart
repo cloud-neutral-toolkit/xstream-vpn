@@ -369,18 +369,30 @@ class DesktopSyncService {
             node['link'],
           ]),
         );
+
+        // Prefer domain from VLESS URI as node name (e.g. "jp-xhttp.svc.plus")
+        final hostFromUri = _extractHostFromVlessUri(vlessUri);
         final name = _firstNonEmptyString([
+          hostFromUri,
           node['name'],
           node['remark'],
           _extractNodeNameFromVlessUri(vlessUri),
           node['id'],
         ]);
         if (name.isEmpty) continue;
+
+        // Country code: prefer server-provided, fallback to domain prefix
+        final countryCode = _nullableString(
+          _firstNonEmptyString([
+            node['countryCode'],
+            node['country_code'],
+            _countryCodeFromHost(hostFromUri),
+          ]),
+        );
+
         candidates.add(SyncedNodeMetadata(
           name: name,
-          countryCode: _nullableString(
-            _firstNonEmptyString([node['countryCode'], node['country_code']]),
-          ),
+          countryCode: countryCode,
           protocol: _nullableString(_firstNonEmptyString([node['protocol']])),
           transport: _nullableString(
             _firstNonEmptyString([node['transport'], node['network']]),
@@ -432,6 +444,36 @@ class DesktopSyncService {
       }
     } catch (_) {
       // Ignore parsing failure and fall back to other fields.
+    }
+    return null;
+  }
+
+  String? _extractHostFromVlessUri(String? uriText) {
+    final raw = (uriText ?? '').trim();
+    if (raw.isEmpty || !raw.toLowerCase().startsWith('vless://')) {
+      return null;
+    }
+    try {
+      final parsed = Uri.parse(raw);
+      final host = parsed.host.trim();
+      if (host.isNotEmpty) {
+        return host.toLowerCase();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String? _countryCodeFromHost(String? host) {
+    if (host == null || host.isEmpty) return null;
+    // Extract subdomain prefix: "jp-xhttp.svc.plus" -> "jp-xhttp"
+    final dotIdx = host.indexOf('.');
+    final prefix = dotIdx > 0 ? host.substring(0, dotIdx) : host;
+    // Take part before first dash: "jp-xhttp" -> "jp"
+    final dashIdx = prefix.indexOf('-');
+    final candidate = dashIdx > 0 ? prefix.substring(0, dashIdx) : prefix;
+    final trimmed = candidate.trim();
+    if (trimmed.length == 2) {
+      return trimmed.toUpperCase();
     }
     return null;
   }

@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 
 import '../../services/vpn_config_service.dart';
 import '../../utils/global_config.dart';
@@ -48,13 +51,37 @@ class XrayConfigWriter {
     final normalizedName = (nodeName ?? '').trim().isNotEmpty
         ? nodeName!.trim()
         : _defaultNodeName;
-    final existing = VpnConfig.getNodeByName(normalizedName);
+    final incomingIdentity = await _readOutboundIdentity(configPath);
+    final existingByName = VpnConfig.getNodeByName(normalizedName);
+    final identityMatches = incomingIdentity == null
+        ? <VpnNode>[]
+        : await _findNodesByIdentity(incomingIdentity);
+    final activeNodeName = GlobalState.activeNodeName.value.trim();
+    VpnNode? existing = identityMatches.cast<VpnNode?>().firstWhere(
+          (node) => (node?.name ?? '') == activeNodeName,
+          orElse: () => null,
+        );
+    existing ??= identityMatches.cast<VpnNode?>().firstWhere(
+          (node) => (node?.serviceName ?? '') != _defaultServiceName,
+          orElse: () => null,
+        );
+    existing ??= identityMatches.isNotEmpty ? identityMatches.first : null;
+    existing ??= existingByName;
+    final targetNodeName = existing?.name ?? normalizedName;
+
+    if (identityMatches.length > 1 && existing != null) {
+      for (final duplicate in identityMatches) {
+        if (duplicate.name != existing.name) {
+          VpnConfig.removeNode(duplicate.name);
+        }
+      }
+    }
 
     if (existing == null) {
       final stale = VpnConfig.nodes
           .where((node) =>
               node.serviceName == _defaultServiceName &&
-              node.name != normalizedName)
+              node.name != targetNodeName)
           .map((node) => node.name)
           .toList();
       for (final name in stale) {
@@ -63,7 +90,7 @@ class XrayConfigWriter {
     }
 
     final node = VpnNode(
-      name: normalizedName,
+      name: targetNodeName,
       countryCode: _normalizeCountryCode(
         countryCode,
         existing?.countryCode ?? _defaultCountryCode,
@@ -107,5 +134,106 @@ class XrayConfigWriter {
     if (trimmed.isEmpty) return 'node';
     if (trimmed.length > 24) return trimmed.substring(0, 24);
     return trimmed;
+  }
+
+  static Future<List<VpnNode>> _findNodesByIdentity(String identity) async {
+    final matches = <VpnNode>[];
+    for (final node in VpnConfig.nodes) {
+      final nodeIdentity = await _readOutboundIdentity(node.configPath);
+      if (nodeIdentity == identity) {
+        matches.add(node);
+      }
+    }
+    return matches;
+  }
+
+  static Future<String?> _readOutboundIdentity(String configPath) async {
+    try {
+      final raw = await File(configPath).readAsString();
+      return extractOutboundIdentity(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @visibleForTesting
+  static String? extractOutboundIdentity(String rawJson) {
+    try {
+      final obj = jsonDecode(rawJson);
+      if (obj is! Map) return null;
+      final outboundsRaw = obj['outbounds'];
+      if (outboundsRaw is! List) return null;
+      Map<dynamic, dynamic>? proxyOutbound;
+      for (final outbound in outboundsRaw) {
+        if (outbound is! Map) continue;
+        if ((outbound['tag'] as String?) == 'proxy') {
+          proxyOutbound = outbound;
+          break;
+        }
+      }
+      if (proxyOutbound == null) return null;
+
+      final protocol =
+          ((proxyOutbound['protocol'] as String?) ?? '').trim().toLowerCase();
+      if (protocol.isEmpty) return null;
+
+      final settings = proxyOutbound['settings'];
+      if (settings is! Map) return null;
+      final vnext = settings['vnext'];
+      if (vnext is! List || vnext.isEmpty || vnext.first is! Map) return null;
+      final first = vnext.first as Map;
+
+      final address =
+          ((first['address'] as String?) ?? '').trim().toLowerCase();
+      final port = (first['port'] as num?)?.toInt();
+      if (address.isEmpty || port == null) return null;
+
+      String userId = '';
+      final users = first['users'];
+      if (users is List && users.isNotEmpty && users.first is Map) {
+        userId = (((users.first as Map)['id'] as String?) ?? '')
+            .trim()
+            .toLowerCase();
+      }
+
+      String network = '';
+      String security = '';
+      String sni = '';
+      final streamSettings = proxyOutbound['streamSettings'];
+      if (streamSettings is Map) {
+        network =
+            ((streamSettings['network'] as String?) ?? '').trim().toLowerCase();
+        security = ((streamSettings['security'] as String?) ?? '')
+            .trim()
+            .toLowerCase();
+
+        final tlsSettings = streamSettings['tlsSettings'];
+        if (tlsSettings is Map) {
+          sni = ((tlsSettings['serverName'] as String?) ?? '')
+              .trim()
+              .toLowerCase();
+        }
+        if (sni.isEmpty) {
+          final realitySettings = streamSettings['realitySettings'];
+          if (realitySettings is Map) {
+            sni = ((realitySettings['serverName'] as String?) ?? '')
+                .trim()
+                .toLowerCase();
+          }
+        }
+      }
+
+      return [
+        protocol,
+        address,
+        '$port',
+        userId,
+        network,
+        security,
+        sni,
+      ].join('|');
+    } catch (_) {
+      return null;
+    }
   }
 }

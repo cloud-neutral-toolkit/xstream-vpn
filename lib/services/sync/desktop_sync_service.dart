@@ -91,7 +91,7 @@ class DesktopSyncService {
       DesktopSyncResult? finalResult;
       while (attempt < (manual ? 1 : maxAttempts)) {
         attempt += 1;
-        final result = await _performSync();
+        final result = await _performSync(manual: manual);
         finalResult = result;
         if (result.success) {
           break;
@@ -117,7 +117,21 @@ class DesktopSyncService {
     }
   }
 
-  Future<DesktopSyncResult> _performSync() async {
+  @visibleForTesting
+  static bool shouldApplySyncPayload({
+    required bool changed,
+    required int configVersion,
+    required int lastConfigVersion,
+    required bool manual,
+    required bool hasRenderablePayload,
+  }) {
+    if (!changed) return false;
+    if (configVersion > lastConfigVersion) return true;
+    if (manual && hasRenderablePayload) return true;
+    return false;
+  }
+
+  Future<DesktopSyncResult> _performSync({required bool manual}) async {
     final session = SessionManager.instance;
     final token = (session.sessionToken ?? '').trim();
     final cookie = (session.cookie ?? '').trim();
@@ -129,8 +143,10 @@ class DesktopSyncService {
     }
 
     try {
+      final lastConfigVersion = SyncStateStore.instance.lastConfigVersion;
+      final sinceVersion = manual ? 0 : lastConfigVersion;
       final uri = session.buildEndpoint(
-        '$_syncPath?since_version=${SyncStateStore.instance.lastConfigVersion}',
+        '$_syncPath?since_version=$sinceVersion',
       );
       final headers = <String, String>{
         'Accept': 'application/json',
@@ -169,21 +185,29 @@ class DesktopSyncService {
       final changed = payload['changed'] == true;
       final configVersion = (payload['version'] as num?)?.toInt() ?? 0;
       final metadata = _extractMetadata(payload);
-      final nodeMetadata = _extractNodeMetadata(payload);
+      final candidates = _extractNodeCandidates(payload);
+      final nodeMetadata = _extractNodeMetadata(candidates);
+      final fallbackConfigJson =
+          (payload['rendered_json'] as String?)?.trim() ?? '{}';
+      final hasRenderablePayload =
+          candidates.isNotEmpty || fallbackConfigJson.trim().isNotEmpty;
 
-      if (!changed ||
-          configVersion <= SyncStateStore.instance.lastConfigVersion) {
+      if (!shouldApplySyncPayload(
+        changed: changed,
+        configVersion: configVersion,
+        lastConfigVersion: lastConfigVersion,
+        manual: manual,
+        hasRenderablePayload: hasRenderablePayload,
+      )) {
         await SyncStateStore.instance.recordSuccess(
-          configVersion: SyncStateStore.instance.lastConfigVersion,
+          configVersion: lastConfigVersion,
           metadata: metadata,
         );
         return const DesktopSyncResult(success: true, message: '配置已是最新版本');
       }
 
-      final fallbackConfigJson =
-          (payload['rendered_json'] as String?)?.trim() ?? '{}';
       final syncedNodeName = await _renderAndRegisterSyncedNodes(
-        candidates: _extractNodeCandidates(payload),
+        candidates: candidates,
         preferredNode: nodeMetadata,
         fallbackConfigJson: fallbackConfigJson,
       );
@@ -323,8 +347,7 @@ class DesktopSyncService {
     return null;
   }
 
-  SyncedNodeMetadata _extractNodeMetadata(Map<String, dynamic> payload) {
-    final candidates = _extractNodeCandidates(payload);
+  SyncedNodeMetadata _extractNodeMetadata(List<SyncedNodeMetadata> candidates) {
     if (candidates.isEmpty) {
       return const SyncedNodeMetadata(name: _fallbackNodeName);
     }

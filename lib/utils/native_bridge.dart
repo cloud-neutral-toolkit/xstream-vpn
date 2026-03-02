@@ -506,6 +506,7 @@ class NativeBridge {
     required bool connected,
     required String nodeName,
     required String proxyMode,
+    required String languageCode,
   }) async {
     if (!Platform.isMacOS) return;
     try {
@@ -513,6 +514,7 @@ class NativeBridge {
         'connected': connected,
         'nodeName': nodeName,
         'proxyMode': proxyMode,
+        'languageCode': languageCode,
       });
     } catch (_) {}
   }

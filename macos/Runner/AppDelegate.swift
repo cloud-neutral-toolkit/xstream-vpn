@@ -10,6 +10,11 @@ class AppDelegate: FlutterAppDelegate {
     case proxyOnly = "proxyOnly"
   }
 
+  enum MenuLanguage {
+    case zh
+    case en
+  }
+
   struct MenuState {
     var connected: Bool = false
     var nodeName: String = "-"
@@ -20,17 +25,21 @@ class AppDelegate: FlutterAppDelegate {
   private var statusItem: NSStatusItem?
   private var nativeChannel: FlutterMethodChannel?
   private var menuState = MenuState()
+  private var menuLanguage: MenuLanguage = .zh
 
   /// The managed xray child process (proxy mode).
   var xrayProcess: Process?
 
-  private var statusLineItem = NSMenuItem(title: "Status: Disconnected", action: nil, keyEquivalent: "")
-  private var nodeLineItem = NSMenuItem(title: "Node: -", action: nil, keyEquivalent: "")
-  private var startStopItem = NSMenuItem(title: "Start Acceleration", action: #selector(toggleAcceleration), keyEquivalent: "")
-  private var reconnectItem = NSMenuItem(title: "Reconnect", action: #selector(reconnectAcceleration), keyEquivalent: "")
-  private var tunModeItem = NSMenuItem(title: "Tun Mode", action: #selector(selectTunMode), keyEquivalent: "")
-  private var proxyOnlyModeItem = NSMenuItem(title: "Proxy Only", action: #selector(selectProxyOnlyMode), keyEquivalent: "")
-  private var launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+  private var statusLineItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+  private var nodeLineItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+  private var startStopItem = NSMenuItem(title: "", action: #selector(toggleAcceleration), keyEquivalent: "")
+  private var reconnectItem = NSMenuItem(title: "", action: #selector(reconnectAcceleration), keyEquivalent: "")
+  private var tunModeItem = NSMenuItem(title: "", action: #selector(selectTunMode), keyEquivalent: "")
+  private var proxyOnlyModeItem = NSMenuItem(title: "", action: #selector(selectProxyOnlyMode), keyEquivalent: "")
+  private var launchAtLoginItem = NSMenuItem(title: "", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+  private var proxyModeRootItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+  private var showWindowItem = NSMenuItem(title: "", action: #selector(showMainWindowAndNotify), keyEquivalent: "")
+  private var quitStopItem = NSMenuItem(title: "", action: #selector(quitAndStopAcceleration), keyEquivalent: "q")
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     if let window = mainFlutterWindow,
@@ -113,17 +122,15 @@ class AppDelegate: FlutterAppDelegate {
     menu.addItem(reconnectItem)
     menu.addItem(NSMenuItem.separator())
 
-    let proxyModeMenu = NSMenu(title: "Proxy Mode")
+    let proxyModeMenu = NSMenu(title: "")
     tunModeItem.target = self
     proxyOnlyModeItem.target = self
     proxyModeMenu.addItem(tunModeItem)
     proxyModeMenu.addItem(proxyOnlyModeItem)
-    let proxyModeRootItem = NSMenuItem(title: "Proxy Mode", action: nil, keyEquivalent: "")
     proxyModeRootItem.submenu = proxyModeMenu
     menu.addItem(proxyModeRootItem)
     menu.addItem(NSMenuItem.separator())
 
-    let showWindowItem = NSMenuItem(title: "Show Main Window", action: #selector(showMainWindowAndNotify), keyEquivalent: "")
     showWindowItem.target = self
     menu.addItem(showWindowItem)
 
@@ -131,7 +138,6 @@ class AppDelegate: FlutterAppDelegate {
     menu.addItem(launchAtLoginItem)
     menu.addItem(NSMenuItem.separator())
 
-    let quitStopItem = NSMenuItem(title: "Quit & Stop Acceleration", action: #selector(quitAndStopAcceleration), keyEquivalent: "q")
     quitStopItem.target = self
     menu.addItem(quitStopItem)
 
@@ -139,13 +145,73 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   private func refreshMenuUI() {
-    statusLineItem.title = "Status: \(menuState.connected ? "Connected" : "Disconnected")"
-    nodeLineItem.title = "Node: \(menuState.nodeName)"
-    startStopItem.title = menuState.connected ? "Stop Acceleration" : "Start Acceleration"
+    statusLineItem.title = "\(menuText(.status)): \(menuState.connected ? menuText(.connected) : menuText(.disconnected))"
+    nodeLineItem.title = "\(menuText(.node)): \(menuState.nodeName)"
+    startStopItem.title = menuState.connected ? menuText(.stopAcceleration) : menuText(.startAcceleration)
+    reconnectItem.title = menuText(.reconnect)
+    tunModeItem.title = menuText(.tunMode)
+    proxyOnlyModeItem.title = menuText(.proxyOnlyMode)
+    proxyModeRootItem.title = menuText(.proxyMode)
+    showWindowItem.title = menuText(.showMainWindow)
+    launchAtLoginItem.title = menuText(.launchAtLogin)
+    quitStopItem.title = menuText(.quitAndStopAcceleration)
     reconnectItem.isEnabled = menuState.nodeName != "-" && !menuState.nodeName.isEmpty
     tunModeItem.state = menuState.proxyMode == .tun ? .on : .off
     proxyOnlyModeItem.state = menuState.proxyMode == .proxyOnly ? .on : .off
     launchAtLoginItem.state = menuState.launchAtLogin ? .on : .off
+  }
+
+  private enum MenuTextKey {
+    case status
+    case connected
+    case disconnected
+    case node
+    case startAcceleration
+    case stopAcceleration
+    case reconnect
+    case tunMode
+    case proxyOnlyMode
+    case proxyMode
+    case showMainWindow
+    case launchAtLogin
+    case quitAndStopAcceleration
+  }
+
+  private func menuText(_ key: MenuTextKey) -> String {
+    switch menuLanguage {
+    case .zh:
+      switch key {
+      case .status: return "状态"
+      case .connected: return "已连接"
+      case .disconnected: return "未连接"
+      case .node: return "节点"
+      case .startAcceleration: return "启动加速"
+      case .stopAcceleration: return "停止加速"
+      case .reconnect: return "重新连接"
+      case .tunMode: return "隧道模式"
+      case .proxyOnlyMode: return "代理模式"
+      case .proxyMode: return "代理模式"
+      case .showMainWindow: return "显示主窗口"
+      case .launchAtLogin: return "登录时启动"
+      case .quitAndStopAcceleration: return "退出并停止加速"
+      }
+    case .en:
+      switch key {
+      case .status: return "Status"
+      case .connected: return "Connected"
+      case .disconnected: return "Disconnected"
+      case .node: return "Node"
+      case .startAcceleration: return "Start Acceleration"
+      case .stopAcceleration: return "Stop Acceleration"
+      case .reconnect: return "Reconnect"
+      case .tunMode: return "Tunnel Mode"
+      case .proxyOnlyMode: return "Proxy Mode"
+      case .proxyMode: return "Proxy Mode"
+      case .showMainWindow: return "Show Main Window"
+      case .launchAtLogin: return "Launch at Login"
+      case .quitAndStopAcceleration: return "Quit & Stop Acceleration"
+      }
+    }
   }
 
   @objc private func showMainWindowAndNotify() {
@@ -283,6 +349,10 @@ class AppDelegate: FlutterAppDelegate {
     }
     if let mode = args["proxyMode"] as? String {
       menuState.proxyMode = (mode == "proxyOnly" || mode == "仅代理") ? .proxyOnly : .tun
+    }
+    if let languageCode = args["languageCode"] as? String {
+      let normalized = languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+      menuLanguage = normalized.hasPrefix("zh") ? .zh : .en
     }
     refreshMenuUI()
     result("success")

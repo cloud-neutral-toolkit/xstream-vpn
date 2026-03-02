@@ -108,6 +108,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
     GlobalState.connectionMode.addListener(_onConnectionModeChanged);
     GlobalState.activeNodeName.addListener(_syncNativeMenuState);
+    GlobalState.locale.addListener(_onLocaleChanged);
     _syncNativeMenuState();
   }
 
@@ -116,6 +117,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this); // ✅ 注销生命周期观察器
     GlobalState.connectionMode.removeListener(_onConnectionModeChanged);
     GlobalState.activeNodeName.removeListener(_syncNativeMenuState);
+    GlobalState.locale.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -434,6 +436,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     addAppLog('[menu] $message');
   }
 
+  Future<void> _onLocaleChanged() async {
+    await _syncNativeMenuState();
+  }
+
   Future<void> _syncNativeMenuState() async {
     if (!Platform.isMacOS) return;
     final nodeName = GlobalState.activeNodeName.value.trim();
@@ -443,6 +449,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       connected: connected,
       nodeName: connected ? nodeName : '-',
       proxyMode: mode,
+      languageCode: GlobalState.locale.value.languageCode,
     );
   }
 

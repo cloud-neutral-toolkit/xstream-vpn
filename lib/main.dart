@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/subscription_screen.dart';
-import 'screens/logs_screen.dart';
 import 'screens/help_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/login_screen.dart';
@@ -89,9 +88,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         MediaQuery.of(context).size.width < _mobileBreakpoint;
   }
 
-  int _settingsIndex(BuildContext context) => _isMobileLayout(context) ? 3 : 2;
-
-  int _logsIndex(BuildContext context) => _isMobileLayout(context) ? 3 : 3;
+  int _settingsIndex(BuildContext context) => _isMobileLayout(context) ? 3 : 3;
 
   @override
   void initState() {
@@ -357,7 +354,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         break;
       case 'openLogs':
         if (mounted) {
-          setState(() => _currentIndex = _logsIndex(context));
+          setState(() => _currentIndex = _settingsIndex(context));
         }
         break;
       case 'editRules':
@@ -460,11 +457,11 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       NavigationRailDestination(
           icon: const Icon(Icons.link), label: Text(context.l10n.get('proxy'))),
       NavigationRailDestination(
+          icon: const Icon(Icons.account_circle),
+          label: Text(context.l10n.get('accountLogin'))),
+      NavigationRailDestination(
           icon: const Icon(Icons.settings),
           label: Text(context.l10n.get('settings'))),
-      NavigationRailDestination(
-          icon: const Icon(Icons.article),
-          label: Text(context.l10n.get('logs'))),
       NavigationRailDestination(
           icon: const Icon(Icons.help), label: Text(context.l10n.get('help'))),
       NavigationRailDestination(
@@ -504,8 +501,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         : [
             context.l10n.get('home'),
             context.l10n.get('proxy'),
+            context.l10n.get('accountLogin'),
             context.l10n.get('settings'),
-            context.l10n.get('logs'),
             context.l10n.get('help'),
             context.l10n.get('about'),
           ];
@@ -555,8 +552,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     final desktopPages = <Widget>[
       const HomeScreen(),
       const SubscriptionScreen(),
+      const LoginScreen(),
       const SettingsScreen(),
-      const LogsScreen(),
       const HelpScreen(),
       const AboutScreen(),
     ];

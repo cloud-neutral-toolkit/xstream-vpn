@@ -745,9 +745,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            _buildSection(context.l10n.get('desktopSync'), [
-              _buildDesktopSyncCard(context),
-            ]),
             Text(
               context.l10n.get('advancedConfig'),
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -1166,9 +1163,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 8),
             const SizedBox(height: 16),
-            _buildSection(context.l10n.get('desktopSync'), [
-              _buildDesktopSyncCard(context),
-            ]),
             ValueListenableBuilder<bool>(
               valueListenable: GlobalState.isUnlocked,
               builder: (context, isUnlocked, _) {

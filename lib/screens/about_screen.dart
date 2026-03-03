@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/app_version_service.dart';
 import '../utils/global_config.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/app_breadcrumb.dart';
@@ -29,9 +30,18 @@ class AboutScreen extends StatelessWidget {
               const Text('xstream',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
-              Text(
-                buildVersion,
-                style: Theme.of(context).textTheme.titleMedium,
+              ValueListenableBuilder<AppVersionInfo>(
+                valueListenable: AppVersionService.info,
+                builder: (context, info, _) {
+                  final hasResolvedVersion =
+                      info.version != '0.0.0' || info.buildNumber != '0';
+                  final versionText =
+                      hasResolvedVersion ? info.shortLabel : buildVersion;
+                  return Text(
+                    versionText,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  );
+                },
               ),
               const SizedBox(height: 16),
               const Text('© 2025-2026 svc.plus'),

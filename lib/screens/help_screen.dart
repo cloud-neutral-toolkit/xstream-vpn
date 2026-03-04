@@ -47,7 +47,7 @@ class _HelpScreenState extends State<HelpScreen> {
     final logsPath = await GlobalApplicationConfig.getLogsPath();
     return _HelpPaths(
       nodesPath: nodesPath,
-      runtimeConfigPath: '$configsPath/config.json',
+      runtimeConfigPath: '$configsPath/node-*-config.json',
       logsPath: '$logsPath/xray-runtime.log',
       configsDir: configsPath,
       logsDir: logsPath,

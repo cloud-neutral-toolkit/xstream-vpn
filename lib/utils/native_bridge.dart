@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ffi' as ffi;
@@ -21,6 +22,7 @@ class NativeBridge {
       _nativeMenuActionHandler;
   static String? _mobileActiveNodeName;
   static String? _darwinAppGroupPathCache;
+  static Future<void> _connectionLifecycleQueue = Future<void>.value();
 
   static final bool _useFfi = Platform.isWindows ||
       Platform.isLinux ||
@@ -54,6 +56,20 @@ class NativeBridge {
     utunInterfaces: [],
   );
   static const _tunMetricsFallback = PacketTunnelMetricsSnapshot();
+
+  static Future<T> _runSerializedConnectionOp<T>(
+    Future<T> Function() action,
+  ) {
+    final completer = Completer<T>();
+    _connectionLifecycleQueue = _connectionLifecycleQueue.then((_) async {
+      try {
+        completer.complete(await action());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }).catchError((_) {});
+    return completer.future;
+  }
 
   static BridgeBindings get _ffi {
     _bindings ??= _useFfi
@@ -151,7 +167,13 @@ class NativeBridge {
   /// - **macOS**: Pigeon → `DarwinHostApi.savePacketTunnelProfile` + `startPacketTunnel`
   /// - **Windows**: FFI → `startXray(configJson)` (TUN inbound handled by xray-core tun2socks)
   /// - **Linux**: FFI → `startXray(configJson)` (TUN inbound handled by xray-core tun2socks)
-  static Future<String> startNodeForTunnel(String nodeName) async {
+  static Future<String> startNodeForTunnel(String nodeName) {
+    return _runSerializedConnectionOp(
+      () => _startNodeForTunnelInternal(nodeName),
+    );
+  }
+
+  static Future<String> _startNodeForTunnelInternal(String nodeName) async {
     final node = VpnConfig.getNodeByName(nodeName);
     if (node == null) return '未知节点: $nodeName';
 
@@ -176,6 +198,7 @@ class NativeBridge {
     // ── Android: MethodChannel → savePacketTunnelProfile + startPacketTunnel
     if (Platform.isAndroid) {
       try {
+        await _ensurePacketTunnelStoppedBeforeStart();
         _mobileActiveNodeName = null;
         final profile = await _buildDefaultTunnelProfileMap(
           configPath: runtimeConfigPath,
@@ -198,6 +221,7 @@ class NativeBridge {
     if (_isDarwin) {
       _ensureDarwinFlutterApiReady();
       try {
+        await _ensurePacketTunnelStoppedBeforeStart();
         await _stopIosLocalEngineIfNeeded();
         final profile = await _buildDefaultTunnelProfile(
           configPath: runtimeConfigPath,
@@ -273,10 +297,14 @@ class NativeBridge {
   /// - **macOS**: Pigeon → `DarwinHostApi.stopPacketTunnel`
   /// - **Windows**: FFI → `stopXray()`
   /// - **Linux**: FFI → `stopXray()`
-  static Future<String> stopNodeForTunnel() async {
+  static Future<String> stopNodeForTunnel() {
+    return _runSerializedConnectionOp(_stopNodeForTunnelInternal);
+  }
+
+  static Future<String> _stopNodeForTunnelInternal() async {
     // ── Darwin: delegate to official Packet Tunnel control path ────
     if (_isDarwin) {
-      final result = await stopPacketTunnel();
+      final result = await _stopPacketTunnelInternal();
       _mobileActiveNodeName = null;
       return result;
     }
@@ -299,13 +327,19 @@ class NativeBridge {
     }
 
     // ── Android: delegate to existing stopPacketTunnel ──────────────
-    final result = await stopPacketTunnel();
+    final result = await _stopPacketTunnelInternal();
     _mobileActiveNodeName = null;
     return result;
   }
 
   // 启动节点服务（防止重复启动）— 代理模式
-  static Future<String> startNodeService(String nodeName) async {
+  static Future<String> startNodeService(String nodeName) {
+    return _runSerializedConnectionOp(
+      () => _startNodeServiceInternal(nodeName),
+    );
+  }
+
+  static Future<String> _startNodeServiceInternal(String nodeName) async {
     final node = VpnConfig.getNodeByName(nodeName);
     if (node == null) return '未知节点: $nodeName';
     final sourceConfigPath = await _resolveNodeConfigSource(node);
@@ -387,7 +421,13 @@ class NativeBridge {
   }
 
   // 停止节点服务
-  static Future<String> stopNodeService(String nodeName) async {
+  static Future<String> stopNodeService(String nodeName) {
+    return _runSerializedConnectionOp(
+      () => _stopNodeServiceInternal(nodeName),
+    );
+  }
+
+  static Future<String> _stopNodeServiceInternal(String nodeName) async {
     final node = VpnConfig.getNodeByName(nodeName);
     if (node == null) return '未知节点: $nodeName';
 
@@ -716,10 +756,7 @@ class NativeBridge {
         isTunMode: true,
       );
     }
-
-    final configsPath = await _darwinTunnelConfigsPath();
-    await Directory(configsPath).create(recursive: true);
-    return '$configsPath/config.json';
+    return _bootstrapNodeConfigPath(isTunMode: true);
   }
 
   static Future<String> _darwinTunnelConfigsPath() async {
@@ -751,9 +788,6 @@ class NativeBridge {
     final sourceFile = File(normalized);
     if (!await sourceFile.exists()) return sourcePath;
 
-    final configsPath = await _darwinTunnelConfigsPath();
-    final canonicalPath = '$configsPath/config.json';
-
     try {
       final sourceJsonStr = await sourceFile.readAsString();
       final sourceJson = jsonDecode(sourceJsonStr) as Map<String, dynamic>;
@@ -768,26 +802,77 @@ class NativeBridge {
 
       final updatedJsonStr =
           const JsonEncoder.withIndent('  ').convert(sourceJson);
-
-      try {
-        final linkType = await FileSystemEntity.type(
-          canonicalPath,
-          followLinks: false,
-        );
-        if (linkType == FileSystemEntityType.link) {
-          await Link(canonicalPath).delete();
-        } else if (linkType == FileSystemEntityType.file) {
-          await File(canonicalPath).delete();
-        } else if (linkType == FileSystemEntityType.directory) {
-          await Directory(canonicalPath).delete(recursive: true);
-        }
-      } catch (_) {}
-
-      await File(canonicalPath).writeAsString(updatedJsonStr);
-      return canonicalPath;
+      if (sourceJsonStr != updatedJsonStr) {
+        await sourceFile.writeAsString(updatedJsonStr);
+      }
+      await _removeLegacyCanonicalConfigIfNeeded(keepPath: normalized);
+      return normalized;
     } catch (_) {
       return normalized;
     }
+  }
+
+  static Future<void> _removeLegacyCanonicalConfigIfNeeded({
+    required String keepPath,
+  }) async {
+    final configsPath = await _darwinTunnelConfigsPath();
+    final legacyPath = '$configsPath/config.json';
+    if (legacyPath == keepPath) return;
+    try {
+      final linkType = await FileSystemEntity.type(
+        legacyPath,
+        followLinks: false,
+      );
+      if (linkType == FileSystemEntityType.link) {
+        await Link(legacyPath).delete();
+      } else if (linkType == FileSystemEntityType.file) {
+        await File(legacyPath).delete();
+      } else if (linkType == FileSystemEntityType.directory) {
+        await Directory(legacyPath).delete(recursive: true);
+      }
+    } catch (_) {}
+  }
+
+  static Future<String> _bootstrapNodeConfigPath({
+    required bool isTunMode,
+  }) async {
+    final configsPath = await _darwinTunnelConfigsPath();
+    await Directory(configsPath).create(recursive: true);
+    final bootstrapPath = '$configsPath/node-default-config.json';
+    final file = File(bootstrapPath);
+    if (!await file.exists()) {
+      await file.writeAsString(
+        _buildBootstrapNodeConfigString(isTunMode: isTunMode),
+      );
+    }
+    await _removeLegacyCanonicalConfigIfNeeded(keepPath: bootstrapPath);
+    return bootstrapPath;
+  }
+
+  static String _buildBootstrapNodeConfigString({
+    required bool isTunMode,
+  }) {
+    final disableLocalProxyInPacketTunnel = Platform.isIOS && isTunMode;
+    final inboundsStr = VpnConfig.generateInboundsConfig(
+      enableSocksProxy: !disableLocalProxyInPacketTunnel,
+      enableHttpProxy: !disableLocalProxyInPacketTunnel,
+      enableTunnelMode: isTunMode,
+    );
+    final root = <String, dynamic>{
+      'log': <String, dynamic>{'loglevel': 'warning'},
+      'dns': <String, dynamic>{
+        'servers': <String>['1.1.1.1', '8.8.8.8'],
+        'queryStrategy': 'UseIPv4',
+      },
+      'inbounds': jsonDecode(inboundsStr),
+      'outbounds': <Map<String, dynamic>>[
+        <String, dynamic>{'protocol': 'freedom', 'tag': 'direct'},
+        <String, dynamic>{'protocol': 'blackhole', 'tag': 'block'},
+        <String, dynamic>{'protocol': 'dns', 'tag': 'dns'},
+      ],
+      'routing': <String, dynamic>{'rules': <Object>[]},
+    };
+    return const JsonEncoder.withIndent('  ').convert(root);
   }
 
   static Future<String?> _resolveNodeConfigSource(VpnNode node) async {
@@ -808,7 +893,6 @@ class NativeBridge {
     final candidates = <String>[
       '$configsPath/node-$code-config.json',
       if (nameToken.isNotEmpty) '$configsPath/node-$nameToken-config.json',
-      '$configsPath/config.json',
     ];
 
     for (final file in candidates) {
@@ -842,7 +926,7 @@ class NativeBridge {
       if (candidate.name == targetNodeName) continue;
       final running = await checkNodeStatus(candidate.name);
       if (!running) continue;
-      await stopNodeService(candidate.name);
+      await _stopNodeServiceInternal(candidate.name);
     }
   }
 
@@ -942,9 +1026,14 @@ class NativeBridge {
   }
 
   /// Start Packet Tunnel on Darwin platforms.
-  static Future<String> startPacketTunnel() async {
+  static Future<String> startPacketTunnel() {
+    return _runSerializedConnectionOp(_startPacketTunnelInternal);
+  }
+
+  static Future<String> _startPacketTunnelInternal() async {
     if (Platform.isAndroid) {
       try {
+        await _ensurePacketTunnelStoppedBeforeStart();
         final configPath = await _resolveTunnelConfigPath();
         if (configPath == null) {
           return '未找到可用的节点配置';
@@ -974,6 +1063,7 @@ class NativeBridge {
     if (!_isDarwin) return '当前平台暂不支持';
     _ensureDarwinFlutterApiReady();
     try {
+      await _ensurePacketTunnelStoppedBeforeStart();
       await _stopIosLocalEngineIfNeeded();
       final configPath = await _resolveTunnelConfigPath();
       if (configPath == null) {
@@ -1006,7 +1096,11 @@ class NativeBridge {
   }
 
   /// Stop Packet Tunnel on Darwin platforms.
-  static Future<String> stopPacketTunnel() async {
+  static Future<String> stopPacketTunnel() {
+    return _runSerializedConnectionOp(_stopPacketTunnelInternal);
+  }
+
+  static Future<String> _stopPacketTunnelInternal() async {
     if (Platform.isAndroid) {
       try {
         final result = await _channel.invokeMethod<String>('stopPacketTunnel');
@@ -1032,6 +1126,31 @@ class NativeBridge {
     } catch (e) {
       return '停止失败: $e';
     }
+  }
+
+  static Future<void> _ensurePacketTunnelStoppedBeforeStart() async {
+    if (Platform.isAndroid) {
+      try {
+        await _channel.invokeMethod<String>('stopPacketTunnel');
+      } catch (_) {}
+      return;
+    }
+
+    if (!_isDarwin) return;
+    _ensureDarwinFlutterApiReady();
+    try {
+      final status = await _darwinHostApi.getPacketTunnelStatus();
+      const activeStates = <String>{
+        'connected',
+        'connecting',
+        'reasserting',
+        'disconnecting',
+      };
+      if (activeStates.contains(status.state)) {
+        await _darwinHostApi.stopPacketTunnel();
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    } catch (_) {}
   }
 
   /// Get Packet Tunnel status on Darwin platforms.

@@ -56,10 +56,9 @@ extension AppDelegate {
       return
     }
 
-    let runtimeConfigPath = resolvedRuntimeConfigPath()
     let runtimeLogPath = resolvedRuntimeLogPath()
     guard let xrayExecutable = resolvedXrayExecutablePath() else {
-      let details = "runtimeConfig=\(runtimeConfigPath), runtimeLog=\(runtimeLogPath), resourcePath=\(Bundle.main.resourcePath ?? "nil")"
+      let details = "configPath=\(sourceConfig), runtimeLog=\(runtimeLogPath), resourcePath=\(Bundle.main.resourcePath ?? "nil")"
       result(FlutterError(code: "PATH_RESOLVE_FAILED", message: "resolve runtime path failed", details: details))
       return
     }
@@ -93,40 +92,18 @@ extension AppDelegate {
       return
     }
 
-    logToFlutter("info", "starting xray executable=\(xrayExecutable), runtimeConfig=\(runtimeConfigPath), runtimeLog=\(runtimeLogPath)")
+    logToFlutter("info", "starting xray executable=\(xrayExecutable), configPath=\(sourceConfig), runtimeLog=\(runtimeLogPath)")
 
     // Prepare directories using FileManager (no shell).
     let fm = FileManager.default
-    let configDir = (runtimeConfigPath as NSString).deletingLastPathComponent
     let logDir = (runtimeLogPath as NSString).deletingLastPathComponent
-    try? fm.createDirectory(atPath: configDir, withIntermediateDirectories: true)
     try? fm.createDirectory(atPath: logDir, withIntermediateDirectories: true)
     fm.createFile(atPath: runtimeLogPath, contents: nil)
-
-    do {
-      let removedTunInbounds = try prepareDirectRuntimeConfig(
-        sourcePath: sourceConfig,
-        runtimeConfigPath: runtimeConfigPath
-      )
-      if removedTunInbounds > 0 {
-        logToFlutter("info", "direct runtime config sanitized: removed \(removedTunInbounds) tun inbound(s)")
-      }
-    } catch {
-      clearActiveNodeName()
-      result(
-        FlutterError(
-          code: "PREPARE_FAILED",
-          message: "prepare runtime config failed",
-          details: error.localizedDescription
-        )
-      )
-      return
-    }
 
     // Launch xray via Foundation.Process (replaces nohup shell).
     let process = Process()
     process.executableURL = URL(fileURLWithPath: xrayExecutable)
-    process.arguments = ["run", "-c", runtimeConfigPath]
+    process.arguments = ["run", "-c", sourceConfig]
     process.currentDirectoryURL = URL(fileURLWithPath: (xrayExecutable as NSString).deletingLastPathComponent)
 
     do {
@@ -356,50 +333,6 @@ extension AppDelegate {
     }
   }
 
-  private func prepareDirectRuntimeConfig(
-    sourcePath: String,
-    runtimeConfigPath: String
-  ) throws -> Int {
-    let sourceData = try Data(contentsOf: URL(fileURLWithPath: sourcePath))
-    var removedTunInbounds = 0
-
-    if var doc = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any],
-       let inbounds = doc["inbounds"] as? [Any] {
-      let filteredInbounds = inbounds.filter { inbound in
-        guard let map = inbound as? [String: Any] else {
-          return true
-        }
-        let protocolName = (map["protocol"] as? String)?.lowercased() ?? ""
-        if protocolName == "tun" {
-          removedTunInbounds += 1
-          return false
-        }
-        return true
-      }
-      doc["inbounds"] = filteredInbounds
-      let outputData = try JSONSerialization.data(
-        withJSONObject: doc,
-        options: [.prettyPrinted, .sortedKeys]
-      )
-      try outputData.write(
-        to: URL(fileURLWithPath: runtimeConfigPath),
-        options: [.atomic]
-      )
-      return removedTunInbounds
-    }
-
-    // Fallback for unexpected structure: preserve existing behavior by copying as-is.
-    let fm = FileManager.default
-    if sourcePath == runtimeConfigPath {
-      return 0
-    }
-    if fm.fileExists(atPath: runtimeConfigPath) {
-      try fm.removeItem(atPath: runtimeConfigPath)
-    }
-    try fm.copyItem(atPath: sourcePath, toPath: runtimeConfigPath)
-    return 0
-  }
-
   private func resolvedAppSupportRoot() -> URL? {
     let fileManager = FileManager.default
     guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
@@ -409,12 +342,6 @@ extension AppDelegate {
     let root = appSupport.appendingPathComponent(bundleId, isDirectory: true)
     try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     return root
-  }
-
-  private func resolvedRuntimeConfigPath() -> String {
-    let configDir = resolvedRuntimeBaseDir().appendingPathComponent("configs", isDirectory: true)
-    try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
-    return configDir.appendingPathComponent("config.json").path
   }
 
   private func resolvedRuntimeLogPath() -> String {

@@ -131,6 +131,26 @@ class DesktopSyncService {
     return false;
   }
 
+  @visibleForTesting
+  static bool isRenderableXrayConfig(String? rawJson) {
+    final trimmed = (rawJson ?? '').trim();
+    if (trimmed.isEmpty) return false;
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is! Map) return false;
+      final outbounds = decoded['outbounds'];
+      if (outbounds is! List || outbounds.isEmpty) return false;
+      return outbounds.any((item) {
+        if (item is! Map) return false;
+        final tag = (item['tag'] as String?)?.trim().toLowerCase();
+        final protocol = (item['protocol'] as String?)?.trim().toLowerCase();
+        return tag == 'proxy' && protocol != null && protocol.isNotEmpty;
+      });
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<DesktopSyncResult> _performSync({required bool manual}) async {
     final session = SessionManager.instance;
     final token = (session.sessionToken ?? '').trim();
@@ -187,10 +207,20 @@ class DesktopSyncService {
       final metadata = _extractMetadata(payload);
       final candidates = _extractNodeCandidates(payload);
       final nodeMetadata = _extractNodeMetadata(candidates);
-      final fallbackConfigJson =
-          (payload['rendered_json'] as String?)?.trim() ?? '{}';
+      final fallbackConfigJson = isRenderableXrayConfig(
+        payload['rendered_json'] as String?,
+      )
+          ? (payload['rendered_json'] as String?)!.trim()
+          : null;
+      final hasCandidateRenderablePayload = candidates.any((node) {
+        if (isRenderableXrayConfig(node.renderedJson)) {
+          return true;
+        }
+        final uri = (node.vlessUri ?? '').trim().toLowerCase();
+        return uri.startsWith('vless://');
+      });
       final hasRenderablePayload =
-          candidates.isNotEmpty || fallbackConfigJson.trim().isNotEmpty;
+          hasCandidateRenderablePayload || fallbackConfigJson != null;
 
       if (!shouldApplySyncPayload(
         changed: changed,
@@ -211,6 +241,11 @@ class DesktopSyncService {
         preferredNode: nodeMetadata,
         fallbackConfigJson: fallbackConfigJson,
       );
+      if (syncedNodeName == null) {
+        const message = '同步失败: 服务端未返回可用节点配置';
+        await SyncStateStore.instance.recordError(message);
+        return const DesktopSyncResult(success: false, message: message);
+      }
       GlobalState.nodeListRevision.value++;
 
       await _sendAck(
@@ -237,12 +272,13 @@ class DesktopSyncService {
     }
   }
 
-  Future<String> _renderAndRegisterSyncedNodes({
+  Future<String?> _renderAndRegisterSyncedNodes({
     required List<SyncedNodeMetadata> candidates,
     required SyncedNodeMetadata preferredNode,
-    required String fallbackConfigJson,
+    required String? fallbackConfigJson,
   }) async {
     if (candidates.isEmpty) {
+      if (fallbackConfigJson == null) return null;
       final configPath = await XrayConfigWriter.writeConfig(fallbackConfigJson);
       return await XrayConfigWriter.registerNode(
         configPath: configPath,
@@ -255,20 +291,22 @@ class DesktopSyncService {
     }
 
     String activeNodeName = preferredNode.name;
+    var applied = false;
     for (final node in candidates) {
       String? configJson = _nullableString(node.renderedJson ?? '');
       configJson ??= _nullableString(
-        node.name == preferredNode.name ? fallbackConfigJson : '',
+        node.name == preferredNode.name ? (fallbackConfigJson ?? '') : '',
       );
       if (configJson == null && node.vlessUri != null) {
         configJson = await VpnConfig.tryGenerateXrayJsonFromVlessUri(
           node.vlessUri!,
         );
       }
-      if (configJson == null) continue;
+      if (!isRenderableXrayConfig(configJson)) continue;
+      final renderableConfigJson = configJson!;
 
       final configPath = await XrayConfigWriter.writeConfigForNode(
-        json: configJson,
+        json: renderableConfigJson,
         nodeName: node.name,
         countryCode: node.countryCode,
       );
@@ -283,9 +321,24 @@ class DesktopSyncService {
       if (node.name == preferredNode.name) {
         activeNodeName = nodeName;
       }
+      applied = true;
     }
 
-    return activeNodeName;
+    if (applied) return activeNodeName;
+    if (fallbackConfigJson == null) return null;
+    final configPath = await XrayConfigWriter.writeConfigForNode(
+      json: fallbackConfigJson,
+      nodeName: preferredNode.name,
+      countryCode: preferredNode.countryCode,
+    );
+    return XrayConfigWriter.registerNode(
+      configPath: configPath,
+      nodeName: preferredNode.name,
+      countryCode: preferredNode.countryCode,
+      protocol: preferredNode.protocol,
+      transport: preferredNode.transport,
+      security: preferredNode.security,
+    );
   }
 
   Future<void> _sendAck({

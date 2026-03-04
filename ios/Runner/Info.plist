@@ -47,5 +47,13 @@
 	<true/>
 	<key>PacketTunnelProviderBundleId</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER).PacketTunnel</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Used to connect development tools for debug builds.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartobservatory._tcp</string>
+		<string>_dartVmService._tcp</string>
+		<string>_fluttervmservice._tcp</string>
+	</array>
 </dict>
 </plist>

@@ -63,4 +63,27 @@ void main() {
       expect(shouldApply, isFalse);
     });
   });
+
+  group('DesktopSyncService.isRenderableXrayConfig', () {
+    test('returns false for empty config object', () {
+      expect(DesktopSyncService.isRenderableXrayConfig('{}'), isFalse);
+    });
+
+    test('returns false when outbounds are missing', () {
+      const json = '{"inbounds":[{"protocol":"tun"}]}';
+      expect(DesktopSyncService.isRenderableXrayConfig(json), isFalse);
+    });
+
+    test('returns true for config with proxy outbound', () {
+      const json = '''
+{
+  "outbounds": [
+    {"tag":"proxy","protocol":"vless"},
+    {"tag":"direct","protocol":"freedom"}
+  ]
+}
+''';
+      expect(DesktopSyncService.isRenderableXrayConfig(json), isTrue);
+    });
+  });
 }

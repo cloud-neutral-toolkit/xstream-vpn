@@ -103,15 +103,24 @@ fetch_dat() {
   local local_hash=""
 
   remote_hash="$(download_text "$sha_url" 2>/dev/null | awk '{print $1}' | head -n1 || true)"
-  if [ -n "$remote_hash" ] && [ -f "$out_file" ]; then
-    local_hash="$(calc_sha256 "$out_file")"
-    if [ "$local_hash" = "$remote_hash" ]; then
-      echo "[info] $name already up to date (sha256 matched), skip download"
+  if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+    if [ -n "$remote_hash" ]; then
+      local_hash="$(calc_sha256 "$out_file")"
+      if [ "$local_hash" = "$remote_hash" ]; then
+        echo "[info] $name already up to date (sha256 matched), skip download"
+        return 0
+      fi
+      if [ "${XSTREAM_REFRESH_DAT:-0}" != "1" ]; then
+        echo "[warn] $name hash changed, keep existing local file (set XSTREAM_REFRESH_DAT=1 to refresh)"
+        return 0
+      fi
+      echo "[info] $name hash changed, updating local file"
+    else
+      echo "[warn] cannot fetch remote hash for $name, keep existing local file"
       return 0
     fi
-    echo "[info] $name hash changed, updating local file"
   elif [ -f "$out_file" ]; then
-    echo "[warn] cannot fetch remote hash for $name, proceed to download latest"
+    echo "[warn] $name exists but is empty, retry download"
   fi
 
   echo "[info] downloading $name from $url"

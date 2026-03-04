@@ -10,9 +10,6 @@ import '../widgets/log_console.dart';
 final GlobalKey<LogConsoleState> logConsoleKey = GlobalKey<LogConsoleState>();
 
 String _displayBranchLabel(String branch) {
-  if (branch.isEmpty) {
-    return 'dev';
-  }
   if (branch == 'main') {
     return 'latest';
   }
@@ -26,11 +23,45 @@ String _displayBranchLabel(String branch) {
   return branch.replaceAll('/', '-');
 }
 
+String _firstNonEmpty(List<String> values) {
+  for (final value in values) {
+    if (value.isNotEmpty) {
+      return value;
+    }
+  }
+  return '';
+}
+
 /// 当前展示版本标签。
 final String buildVersion = (() {
-  const branch = String.fromEnvironment('BRANCH_NAME', defaultValue: '');
-  const buildId = String.fromEnvironment('BUILD_ID', defaultValue: '');
-  const buildDate = String.fromEnvironment('BUILD_DATE', defaultValue: '');
+  const defineBranchName = String.fromEnvironment('BRANCH_NAME', defaultValue: '');
+  const defineBranch = String.fromEnvironment('BRANCH', defaultValue: '');
+  const defineBuildId = String.fromEnvironment('BUILD_ID', defaultValue: '');
+  const defineBuildDate = String.fromEnvironment('BUILD_DATE', defaultValue: '');
+
+  final envBranch =
+      (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
+          ? (Platform.environment['BRANCH_NAME'] ??
+              Platform.environment['BRANCH'] ??
+              '')
+          : '';
+  final envBuildId =
+      (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
+          ? (Platform.environment['BUILD_ID'] ?? '')
+          : '';
+  final envBuildDate =
+      (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
+          ? (Platform.environment['BUILD_DATE'] ?? '')
+          : '';
+
+  final branch = _firstNonEmpty([
+    defineBranchName,
+    defineBranch,
+    envBranch,
+    'main',
+  ]);
+  final buildId = _firstNonEmpty([defineBuildId, envBuildId]);
+  final buildDate = _firstNonEmpty([defineBuildDate, envBuildDate]);
 
   final parts = <String>[
     _displayBranchLabel(branch),

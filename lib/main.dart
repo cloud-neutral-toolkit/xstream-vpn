@@ -185,9 +185,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
       case _AddNodeMenuAction.manualInput:
         _openAddConfig();
         break;
-      case _AddNodeMenuAction.subscriptionLink:
-        await _showSubscriptionLinkDialog();
-        break;
       case _AddNodeMenuAction.scanQr:
         await _showQrInputDialog();
         break;
@@ -206,37 +203,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         await _importFromClipboard();
         break;
     }
-  }
-
-  Future<void> _showSubscriptionLinkDialog() async {
-    final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(context.l10n.get('addNodeSubscriptionLink')),
-          content: TextField(
-            controller: controller,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: 'vless://...',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.l10n.get('cancel')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: Text(context.l10n.get('confirm')),
-            ),
-          ],
-        );
-      },
-    );
-    if (!mounted || value == null || value.isEmpty) return;
-    _openAddConfigWithUri(value);
   }
 
   Future<void> _showQrInputDialog() async {
@@ -629,12 +595,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                     ),
                     _buildAddNodeItem(
                       context,
-                      action: _AddNodeMenuAction.subscriptionLink,
-                      icon: Icons.link,
-                      text: context.l10n.get('addNodeSubscriptionLink'),
-                    ),
-                    _buildAddNodeItem(
-                      context,
                       action: _AddNodeMenuAction.scanQr,
                       icon: Icons.qr_code_scanner,
                       text: context.l10n.get('addNodeScanQr'),
@@ -773,7 +733,6 @@ class _NavigationDestination {
 
 enum _AddNodeMenuAction {
   manualInput,
-  subscriptionLink,
   scanQr,
   pickImage,
   pickFile,

@@ -609,6 +609,16 @@ class VpnConfig {
       jsonObj['outbounds'] = outbounds;
       final normalizedNetwork = network.trim().toLowerCase();
       final normalizedSecurity = security.trim().toLowerCase();
+      final requestedAlpn = alpn
+          .map((e) => e.trim().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final effectiveTlsAlpn = normalizedNetwork == 'xhttp'
+          ? List<String>.from(XhttpAdvancedConfig.alpn.value)
+          : requestedAlpn;
+      final effectiveXhttpMode = normalizedNetwork == 'xhttp'
+          ? XhttpAdvancedConfig.mode.value
+          : _nullableValue(mode);
 
       proxyOutbound['protocol'] = protocol;
       final settings = Map<String, dynamic>.from(
@@ -664,8 +674,8 @@ class VpnConfig {
         } else {
           tlsSettings.remove('fingerprint');
         }
-        if (alpn.isNotEmpty) {
-          tlsSettings['alpn'] = alpn;
+        if (effectiveTlsAlpn.isNotEmpty) {
+          tlsSettings['alpn'] = effectiveTlsAlpn;
         } else {
           tlsSettings.remove('alpn');
         }
@@ -679,8 +689,8 @@ class VpnConfig {
           'path': _firstNonEmpty(_normalizePath(path), '/'),
           'host': _firstNonEmpty(host, domain),
         };
-        if (_hasValue(mode)) {
-          xhttpSettings['mode'] = mode!.trim();
+        if (_hasValue(effectiveXhttpMode)) {
+          xhttpSettings['mode'] = effectiveXhttpMode!.trim();
         }
         streamSettings['xhttpSettings'] = xhttpSettings;
       }

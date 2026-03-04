@@ -11,7 +11,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'utils/app_theme.dart';
 import 'utils/native_bridge.dart';
-import 'utils/global_config.dart' show GlobalState, DnsConfig;
+import 'utils/global_config.dart'
+    show GlobalState, DnsConfig, XhttpAdvancedConfig;
 import 'services/experimental/experimental_features.dart';
 import 'services/app_version_service.dart';
 import 'utils/app_logger.dart';
@@ -30,6 +31,7 @@ void main(List<String> args) async {
   await AppVersionService.init();
   await TelemetryService.init();
   await DnsConfig.init();
+  await XhttpAdvancedConfig.init();
   await GlobalProxyService.init();
   await PermissionGuideService.init();
   await ExperimentalFeatures.init();

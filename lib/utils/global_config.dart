@@ -34,17 +34,18 @@ String _firstNonEmpty(List<String> values) {
 
 /// 当前展示版本标签。
 final String buildVersion = (() {
-  const defineBranchName = String.fromEnvironment('BRANCH_NAME', defaultValue: '');
+  const defineBranchName =
+      String.fromEnvironment('BRANCH_NAME', defaultValue: '');
   const defineBranch = String.fromEnvironment('BRANCH', defaultValue: '');
   const defineBuildId = String.fromEnvironment('BUILD_ID', defaultValue: '');
-  const defineBuildDate = String.fromEnvironment('BUILD_DATE', defaultValue: '');
+  const defineBuildDate =
+      String.fromEnvironment('BUILD_DATE', defaultValue: '');
 
-  final envBranch =
-      (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-          ? (Platform.environment['BRANCH_NAME'] ??
-              Platform.environment['BRANCH'] ??
-              '')
-          : '';
+  final envBranch = (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
+      ? (Platform.environment['BRANCH_NAME'] ??
+          Platform.environment['BRANCH'] ??
+          '')
+      : '';
   final envBuildId =
       (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
           ? (Platform.environment['BUILD_ID'] ?? '')
@@ -553,6 +554,84 @@ class DnsConfig {
       }
     }
     return trimmed;
+  }
+}
+
+class XhttpAdvancedConfig {
+  static const _modeKey = 'xhttpMode';
+  static const _alpnKey = 'xhttpAlpn';
+
+  static const String modeStreamUp = 'stream-up';
+  static const String modeAuto = 'auto';
+  static const List<String> allowedModes = <String>[modeStreamUp, modeAuto];
+
+  static const String alpnH3 = 'h3';
+  static const String alpnH2 = 'h2';
+  static const String alpnHttp11 = 'http/1.1';
+  static const List<String> allowedAlpn = <String>[alpnH3, alpnH2, alpnHttp11];
+  static const List<String> defaultAlpn = <String>[alpnH2, alpnHttp11];
+
+  static final ValueNotifier<String> mode = ValueNotifier<String>(modeStreamUp);
+  static final ValueNotifier<List<String>> alpn =
+      ValueNotifier<List<String>>(List<String>.from(defaultAlpn));
+
+  static Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    mode.value = _normalizeMode(prefs.getString(_modeKey));
+    alpn.value = _normalizeAlpn(prefs.getStringList(_alpnKey));
+
+    mode.addListener(() {
+      prefs.setString(_modeKey, _normalizeMode(mode.value));
+    });
+    alpn.addListener(() {
+      prefs.setStringList(_alpnKey, _normalizeAlpn(alpn.value));
+    });
+  }
+
+  static void setMode(String value) {
+    mode.value = _normalizeMode(value);
+  }
+
+  static void toggleAlpn(String value, bool enabled) {
+    final current = List<String>.from(alpn.value);
+    if (!allowedAlpn.contains(value)) return;
+    if (enabled) {
+      if (!current.contains(value)) {
+        current.add(value);
+      }
+    } else {
+      current.remove(value);
+    }
+    alpn.value = _normalizeAlpn(current);
+  }
+
+  static String _normalizeMode(String? raw) {
+    final value = (raw ?? '').trim().toLowerCase();
+    if (allowedModes.contains(value)) {
+      return value;
+    }
+    return modeStreamUp;
+  }
+
+  static List<String> _normalizeAlpn(List<String>? raw) {
+    final source = raw ?? defaultAlpn;
+    final normalized = <String>{};
+    for (final value in source) {
+      final lowered = value.trim().toLowerCase();
+      if (allowedAlpn.contains(lowered)) {
+        normalized.add(lowered);
+      }
+    }
+    if (normalized.isEmpty) {
+      return <String>[];
+    }
+    final ordered = <String>[];
+    for (final candidate in allowedAlpn) {
+      if (normalized.contains(candidate)) {
+        ordered.add(candidate);
+      }
+    }
+    return ordered;
   }
 }
 

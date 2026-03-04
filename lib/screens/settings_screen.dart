@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:archive/archive_io.dart';
 import '../../utils/global_config.dart'
-    show GlobalState, DnsConfig, GlobalApplicationConfig;
+    show GlobalState, DnsConfig, GlobalApplicationConfig, XhttpAdvancedConfig;
 import '../../utils/native_bridge.dart';
 import '../../services/app_version_service.dart';
 import '../l10n/app_localizations.dart';
@@ -736,6 +736,120 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  Widget _buildXhttpAdvancedConfig(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            context.l10n.get('xhttpAdvancedTitle'),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            context.l10n.get('xhttpAdvancedHint'),
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  context.l10n.get('xhttpModeLabel'),
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+              ValueListenableBuilder<String>(
+                valueListenable: XhttpAdvancedConfig.mode,
+                builder: (context, selectedMode, _) {
+                  return DropdownButton<String>(
+                    value: selectedMode,
+                    items: [
+                      DropdownMenuItem(
+                        value: XhttpAdvancedConfig.modeStreamUp,
+                        child: Text(context.l10n.get('xhttpModeStreamUp')),
+                      ),
+                      DropdownMenuItem(
+                        value: XhttpAdvancedConfig.modeAuto,
+                        child: Text(context.l10n.get('xhttpModeAuto')),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      XhttpAdvancedConfig.setMode(value);
+                      addAppLog('XHTTP mode: $value');
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            context.l10n.get('xhttpAlpnLabel'),
+            style: const TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<List<String>>(
+            valueListenable: XhttpAdvancedConfig.alpn,
+            builder: (context, selectedAlpn, _) {
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    label: Text(context.l10n.get('xhttpAlpnH3')),
+                    selected: selectedAlpn.contains(XhttpAdvancedConfig.alpnH3),
+                    onSelected: (enabled) {
+                      XhttpAdvancedConfig.toggleAlpn(
+                        XhttpAdvancedConfig.alpnH3,
+                        enabled,
+                      );
+                      addAppLog('XHTTP ALPN h3: ${enabled ? "on" : "off"}');
+                    },
+                  ),
+                  FilterChip(
+                    label: Text(context.l10n.get('xhttpAlpnH2')),
+                    selected: selectedAlpn.contains(XhttpAdvancedConfig.alpnH2),
+                    onSelected: (enabled) {
+                      XhttpAdvancedConfig.toggleAlpn(
+                        XhttpAdvancedConfig.alpnH2,
+                        enabled,
+                      );
+                      addAppLog('XHTTP ALPN h2: ${enabled ? "on" : "off"}');
+                    },
+                  ),
+                  FilterChip(
+                    label: Text(context.l10n.get('xhttpAlpnHttp11')),
+                    selected: selectedAlpn.contains(
+                      XhttpAdvancedConfig.alpnHttp11,
+                    ),
+                    onSelected: (enabled) {
+                      XhttpAdvancedConfig.toggleAlpn(
+                        XhttpAdvancedConfig.alpnHttp11,
+                        enabled,
+                      );
+                      addAppLog(
+                        'XHTTP ALPN http/1.1: ${enabled ? "on" : "off"}',
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMobileSettingsView(BuildContext context) {
     return Container(
       color: Colors.grey[100],
@@ -977,6 +1091,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       context.l10n.get('dnsOverHttpsHint'),
                       style: const TextStyle(fontSize: 12),
                     ),
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: _buildXhttpAdvancedConfig(context),
                   ),
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   if (!Platform.isIOS)
@@ -1261,6 +1383,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: const TextStyle(fontSize: 12),
                           ),
                         ),
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _buildXhttpAdvancedConfig(context),
                       ),
                       ValueListenableBuilder<bool>(
                         valueListenable: GlobalState.socksProxyEnabled,

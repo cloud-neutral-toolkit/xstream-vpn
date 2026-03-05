@@ -2,6 +2,8 @@ name: Build and Release Flutter Packages
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   pull_request:
@@ -19,6 +21,14 @@ on:
 
 permissions:
   contents: write
+
+env:
+  XSTREAM_APPLE_TEAM_ID: N3G9T67W78
+  XSTREAM_APP_GROUP_ID: group.plus.svc.xstream
+  XSTREAM_IOS_BUNDLE_ID: plus.svc.xstream
+  XSTREAM_IOS_PACKET_TUNNEL_BUNDLE_ID: plus.svc.xstream.PacketTunnel
+  XSTREAM_MACOS_BUNDLE_ID: plus.svc.xstream
+  XSTREAM_MACOS_PACKET_TUNNEL_BUNDLE_ID: plus.svc.xstream.PacketTunnel
 
 jobs:
   build:
@@ -316,3 +326,81 @@ jobs:
           app-id: ${{ secrets.MS_STORE_APP_ID }}
           flight-id: 'default'
           package-path: release-artifacts/**/*.msix
+
+
+  publish-testflight-main:
+    name: Upload iOS/macOS to TestFlight (ASC API Key)
+    runs-on: macos-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.32.2'
+
+      - name: Install CocoaPods
+        run: |
+          sudo gem install cocoapods --no-document || true
+          pod --version
+
+      - name: Validate required ASC/TestFlight secrets
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          for key in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!key:-}" ]; then
+              echo "Missing required secret: $key" >&2
+              exit 1
+            fi
+          done
+
+      - name: Prepare .env for release script
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          cat > .env.ci <<EOF
+          XSTREAM_APPLE_TEAM_ID=$XSTREAM_APPLE_TEAM_ID
+          XSTREAM_APP_GROUP_ID=$XSTREAM_APP_GROUP_ID
+          XSTREAM_MACOS_BUNDLE_ID=$XSTREAM_MACOS_BUNDLE_ID
+          XSTREAM_MACOS_PACKET_TUNNEL_BUNDLE_ID=$XSTREAM_MACOS_PACKET_TUNNEL_BUNDLE_ID
+          XSTREAM_IOS_BUNDLE_ID=$XSTREAM_IOS_BUNDLE_ID
+          XSTREAM_IOS_PACKET_TUNNEL_BUNDLE_ID=$XSTREAM_IOS_PACKET_TUNNEL_BUNDLE_ID
+          ASC_KEY_ID=$ASC_KEY_ID
+          ASC_ISSUER_ID=$ASC_ISSUER_ID
+          ASC_KEY_PATH=$KEY_PATH
+          EOF
+
+      - name: Build and upload to TestFlight
+        env:
+          ENV_FILE: .env.ci
+        run: |
+          set -euo pipefail
+          chmod +x scripts/release-testflight.sh
+          scripts/release-testflight.sh --platform all --build-number "${GITHUB_RUN_NUMBER}"
+
+      - name: Upload Apple release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-apple-testflight-${{ github.run_number }}
+          path: |
+            build/ios/ipa/*.ipa
+            build/macos/export/*.pkg
+          if-no-files-found: warn

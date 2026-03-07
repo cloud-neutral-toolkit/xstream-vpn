@@ -27,6 +27,10 @@ dependencies:
   shared_preferences: ^2.5.4
   json_annotation: ^4.9.0
   flutter_launcher_icons: ^0.14.3  # ✅ 升级：解决唯一一个受限 direct dependency
+  mobile_scanner: ^7.2.0
+  file_picker: ^10.3.10
+  zxing2: ^0.2.4
+  image: ^4.3.0
 
 dependency_overrides:
   intl: ^0.20.2

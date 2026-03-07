@@ -11,11 +11,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'utils/app_theme.dart';
 import 'utils/native_bridge.dart';
+import 'services/app_version_service.dart';
+import 'utils/app_logger.dart';
 import 'utils/global_config.dart'
     show GlobalState, DnsConfig, XhttpAdvancedConfig;
 import 'services/experimental/experimental_features.dart';
-import 'services/app_version_service.dart';
-import 'utils/app_logger.dart';
 import 'services/telemetry/telemetry_service.dart';
 import 'services/vpn_config_service.dart';
 import 'services/global_proxy_service.dart';
@@ -25,6 +25,26 @@ import 'services/tun_settings_service.dart';
 import 'widgets/permission_guide_dialog.dart';
 import 'widgets/log_console.dart' show LogLevel;
 import 'widgets/app_breadcrumb.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:image/image.dart' as img;
+import 'package:zxing2/qrcode.dart';
+import 'widgets/take_picture.dart';
+
+String getQrCodeData(img.Image image) {
+  final source = RGBLuminanceSource(
+      image.width,
+      image.height,
+      image
+          .convert(numChannels: 4)
+          .getBytes(order: img.ChannelOrder.abgr)
+          .buffer
+          .asInt32List());
+  // decode qr code
+  final bitMap = BinaryBitmap(GlobalHistogramBinarizer(source));
+  final qr = QRCodeReader().decode(bitMap);
+  return qr.text;
+}
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -188,10 +208,41 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         _openAddConfig();
         break;
       case _AddNodeMenuAction.scanQr:
-        await _showQrInputDialog();
-        break;
-      case _AddNodeMenuAction.pickImage:
-        _showComingSoon(context.l10n.get('addNodePickImage'));
+        if (Platform.isAndroid || Platform.isIOS) {
+          final result = await showModalBottomSheet<String>(
+            context: context,
+            builder: (BuildContext ctx) {
+              return SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    ListTile(
+                      leading: const Icon(Icons.camera_alt),
+                      title: Text(context.l10n.get('camera')),
+                      onTap: () async {
+                        Navigator.pop(ctx, 'camera');
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.photo_library),
+                      title: Text(context.l10n.get('gallery')),
+                      onTap: () {
+                        Navigator.pop(ctx, 'gallery');
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+          if (result == 'camera') {
+            await _showQrScanner();
+          } else if (result == 'gallery') {
+            await _pickImageAndScan();
+          }
+        } else {
+           await _pickImageAndScan();
+        }
         break;
       case _AddNodeMenuAction.pickFile:
         if (mounted) {
@@ -206,40 +257,52 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
         break;
     }
   }
-
-  Future<void> _showQrInputDialog() async {
-    final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(context.l10n.get('addNodeScanQr')),
-          content: TextField(
-            controller: controller,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: context.l10n.get('scanResultHint'),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.l10n.get('cancel')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: Text(context.l10n.get('confirm')),
-            ),
-          ],
-        );
-      },
-    );
-    if (!mounted || value == null || value.isEmpty) return;
-    if (!value.startsWith('vless://')) {
-      _showComingSoon(context.l10n.get('vlessUriInvalid'));
+  Future<void> _showQrScanner() async {
+    final barcode = await Navigator.of(context, rootNavigator: true)
+        .push<Barcode?>(MaterialPageRoute(builder: (ctx) {
+      return const ScanQrCode();
+    }));
+    if (barcode == null || barcode.displayValue == null) {
       return;
     }
-    _openAddConfigWithUri(value);
+    if (!mounted) return;
+    _openAddConfigWithUri(barcode.displayValue!);
+  }
+
+  Future<void> _pickImageAndScan() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+    final imageBytes = result.files.first.bytes;
+    if (imageBytes == null) {
+      return;
+    }
+
+    try {
+      final image = img.decodeImage(imageBytes);
+      if (image == null) {
+        throw Exception('Failed to decode image');
+      }
+      final data = getQrCodeData(image);
+      if (data.isEmpty) {
+        throw Exception('Failed to find QR code');
+      }
+      if (!mounted) return;
+      if (!data.startsWith('vless://')) {
+        _showComingSoon(context.l10n.get('vlessUriInvalid'));
+        return;
+      }
+      _openAddConfigWithUri(data);
+    } catch (e) {
+      addAppLog('decode qr code error: $e', level: LogLevel.error);
+      if (mounted) {
+        _showComingSoon(context.l10n.get('decodeQrCodeFailed'));
+      }
+    }
   }
 
   Future<void> _importFromClipboard() async {
@@ -603,12 +666,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                     ),
                     _buildAddNodeItem(
                       context,
-                      action: _AddNodeMenuAction.pickImage,
-                      icon: Icons.image,
-                      text: context.l10n.get('addNodePickImage'),
-                    ),
-                    _buildAddNodeItem(
-                      context,
                       action: _AddNodeMenuAction.pickFile,
                       icon: Icons.file_open,
                       text: context.l10n.get('addNodePickFile'),
@@ -736,7 +793,6 @@ class _NavigationDestination {
 enum _AddNodeMenuAction {
   manualInput,
   scanQr,
-  pickImage,
   pickFile,
   readClipboard,
 }

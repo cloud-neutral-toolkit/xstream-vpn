@@ -86,4 +86,15 @@ This runtime package is embedded inside the macOS app bundle to support
 post-install debugging and external MCP-based orchestration.
 README
 
+# Re-sign the app bundle after injecting runtime tools to preserve code
+# signature integrity.  Without this, macOS will refuse to launch the
+# PacketTunnel Network Extension (NEVPNConnectionErrorDomain code 12).
+SIGN_IDENTITY=$(codesign -dvvv "$APP_BUNDLE" 2>&1 | grep '^Authority=' | head -1 | sed 's/^Authority=//')
+if [ -n "$SIGN_IDENTITY" ] && [ "$SIGN_IDENTITY" != "-" ]; then
+  echo "re-signing app bundle with: $SIGN_IDENTITY"
+  codesign --force --deep --sign "$SIGN_IDENTITY" --timestamp=none "$APP_BUNDLE"
+else
+  echo "⚠️  no signing identity found on app bundle; skipping re-sign"
+fi
+
 echo "runtime mcp packaged: $RUNTIME_DIR"

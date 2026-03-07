@@ -43,6 +43,7 @@
 - 🛠️ [开发者文档（macOS 开发环境搭建）](docs/dev-guide.md)
 - 🧪 [Xcode 在线调试（macOS / iOS）](docs/xcode-online-debug.md)
 - 🤖 [本机 MCP Server（Codex / Genmini）](docs/xstream-mcp-server.md)
+- ☁️ [macOS 本机 GCS 挂载（OpenClaw）](docs/macos-gcs-mount.md)
 - 📱 [iOS 设计文档](docs/ios-design.md)
 - 🐧 [Linux systemd 运行指南](docs/linux-xray-systemd.md)
 - 🪟 [Windows 计划任务运行指南](docs/windows-task-scheduler.md)

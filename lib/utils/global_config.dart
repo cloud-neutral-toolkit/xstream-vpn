@@ -41,28 +41,15 @@ final String buildVersion = (() {
   const defineBuildDate =
       String.fromEnvironment('BUILD_DATE', defaultValue: '');
 
-  final envBranch = (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-      ? (Platform.environment['BRANCH_NAME'] ??
-          Platform.environment['BRANCH'] ??
-          '')
-      : '';
-  final envBuildId =
-      (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-          ? (Platform.environment['BUILD_ID'] ?? '')
-          : '';
-  final envBuildDate =
-      (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-          ? (Platform.environment['BUILD_DATE'] ?? '')
-          : '';
-
+  // Prioritize environment defines (passed via --dart-define) for ALL platforms
+  // This ensures mobile builds (iOS/Android) get the same labels as Desktop when built via Makefile.
   final branch = _firstNonEmpty([
     defineBranchName,
     defineBranch,
-    envBranch,
     'main',
   ]);
-  final buildId = _firstNonEmpty([defineBuildId, envBuildId]);
-  final buildDate = _firstNonEmpty([defineBuildDate, envBuildDate]);
+  final buildId = defineBuildId;
+  final buildDate = defineBuildDate;
 
   final parts = <String>[
     _displayBranchLabel(branch),

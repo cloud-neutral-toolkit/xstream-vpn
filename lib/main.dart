@@ -651,12 +651,13 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                       icon: Icons.edit,
                       text: context.l10n.get('addNodeManualInput'),
                     ),
-                    _buildAddNodeItem(
-                      context,
-                      action: _AddNodeMenuAction.scanQr,
-                      icon: Icons.qr_code_scanner,
-                      text: context.l10n.get('addNodeScanQr'),
-                    ),
+                    if (Platform.isAndroid || Platform.isIOS)
+                      _buildAddNodeItem(
+                        context,
+                        action: _AddNodeMenuAction.scanQr,
+                        icon: Icons.qr_code_scanner,
+                        text: context.l10n.get('addNodeScanQr'),
+                      ),
 
                     _buildAddNodeItem(
                       context,

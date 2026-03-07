@@ -103,7 +103,7 @@ class NativeBridge {
     required String vpnNodesConfigContent,
     required String password,
   }) async {
-    if (_isMobile) {
+    if (_isMobile || Platform.isMacOS) {
       try {
         await File(xrayConfigPath).parent.create(recursive: true);
         await File(servicePath).parent.create(recursive: true);
@@ -362,7 +362,7 @@ class NativeBridge {
       isTunMode: false,
     );
 
-    if (_isMobile) {
+    if (_isMobile || Platform.isMacOS) {
       if (Platform.isAndroid) {
         final tunStatus = await getPacketTunnelStatus();
         if (tunStatus.status == 'connected' ||
@@ -434,7 +434,7 @@ class NativeBridge {
     final node = VpnConfig.getNodeByName(nodeName);
     if (node == null) return '未知节点: $nodeName';
 
-    if (_isMobile) {
+    if (_isMobile || Platform.isMacOS) {
       if (_mobileActiveNodeName != nodeName) {
         return 'success';
       }
@@ -478,7 +478,7 @@ class NativeBridge {
     final node = VpnConfig.getNodeByName(nodeName);
     if (node == null) return false;
 
-    if (_isMobile) {
+    if (_isMobile || Platform.isMacOS) {
       return _mobileActiveNodeName == nodeName;
     }
 
@@ -564,7 +564,7 @@ class NativeBridge {
 
   /// 查询 Xray Core 是否正在下载
   static Future<bool> isXrayDownloading() async {
-    if (!_isDesktop) return false;
+    if (!_isDesktop || Platform.isMacOS) return false;
     if (_useFfi) {
       final res = _ffi.isXrayDownloading();
       return res == 1;
@@ -585,7 +585,7 @@ class NativeBridge {
 
   // 重置配置和 Xray 文件：触发 performAction:resetXrayAndConfig
   static Future<String> resetXrayAndConfig(String password) async {
-    if (!_isDesktop) return '当前平台暂不支持';
+    if (!_isDesktop || Platform.isMacOS) return '当前平台暂不支持';
     if (_useFfi) {
       final actionPtr = 'resetXrayAndConfig'.toNativeUtf8();
       final pwdPtr = password.toNativeUtf8();

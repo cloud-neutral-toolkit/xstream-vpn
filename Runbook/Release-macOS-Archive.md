@@ -21,7 +21,7 @@
 
 ```yaml
 # pubspec.yaml
-version: X.Y.Z+BUILD   # 例：0.3.6+1
+version: X.Y.Z-BUILD   # 例：0.3.6-1
 ```
 
 规则：

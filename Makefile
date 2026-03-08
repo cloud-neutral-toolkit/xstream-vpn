@@ -47,21 +47,13 @@ endef
 .PHONY: \
 	help clean icon \
 	build\:all build\:desktop build\:mobile \
-	build\:macos build\:macos\:x64 build\:macos\:arm64 build\:windows\:icon \
-	sync\:macos\:config \
-	build\:windows build\:windows\:x64 \
+	build\:macos build\:macos\:x64 build\:macos\:arm64 \
+	run\:macos\:debug fix\:macos\:signing sync\:macos\:config \
+	build\:windows build\:windows\:x64 build\:windows\:icon \
 	build\:linux build\:linux\:x64 build\:linux\:arm64 \
 	build\:ios build\:ios\:app build\:ios\:ipa install\:ios\:debug install\:ios\:release deploy\:ios\:device \
 	build\:android build\:android\:apk build\:android\:libxray \
-	run\:macos\:debug fix\:macos\:signing \
-	all build-all build-desktop build-mobile \
-	build-macos build-macos-intel build-macos-arm64 run-macos-debug fix-macos-signing sync-macos-config windows-icon \
-	build-windows build-windows-x64 build-linux build-linux-x64 build-linux-arm64 \
-	build-ios build-ios-app build-ios-ipa install-ios-debug install-ios-release deploy-ios-device \
-	build-android build-android-apk build-android-libxray \
-	macos-intel macos-arm64 macos-debug-run windows-x64 linux-x64 linux-arm64 android-arm64 android-libxray android-apk ios-arm64 ios-ipa ios-install-debug ios-install-release ios-deploy-device \
-	mcp mcp-bootstrap mcp-doctor mcp-install mcp-start-dev mcp-start-runtime \
-	xcode-debug-bootstrap xcode-mcp-doctor xstream-mcp-install xstream-mcp-start xstream-mcp-start-dev xstream-mcp-start-runtime
+	mcp mcp-bootstrap mcp-doctor mcp-install mcp-start-dev mcp-start-runtime
 
 help:
 	@printf "Xstream build metadata: branch=%s build=%s date=%s\n\n" "$(BRANCH)" "$(BUILD_ID)" "$(BUILD_DATE)"
@@ -141,9 +133,6 @@ fix\:macos\:signing:
 sync\:macos\:config:
 	$(call run_target,FLUTTER="$(FLUTTER)",sync-macos-config)
 
-sync-macos-config:
-	@$(MAKE) 'sync:macos:config'
-
 build\:windows:
 	@$(MAKE) 'build:windows:x64'
 
@@ -189,120 +178,6 @@ build\:android\:apk:
 build\:android\:libxray:
 	$(call run_target,$(COMMON_ENV),android-libxray)
 
-all:
-	@$(MAKE) 'build:all'
-
-build-all:
-	@$(MAKE) 'build:all'
-
-build-desktop:
-	@$(MAKE) 'build:desktop'
-
-build-mobile:
-	@$(MAKE) 'build:mobile'
-
-build-macos:
-	@$(MAKE) 'build:macos'
-
-build-macos-intel:
-	@$(MAKE) 'build:macos:x64'
-
-build-macos-arm64:
-	@$(MAKE) 'build:macos:arm64'
-
-run-macos-debug:
-	@$(MAKE) 'run:macos:debug'
-
-fix-macos-signing:
-	@$(MAKE) 'fix:macos:signing'
-
-build-windows:
-	@$(MAKE) 'build:windows'
-
-build-windows-x64:
-	@$(MAKE) 'build:windows:x64'
-
-windows-icon:
-	@$(MAKE) 'build:windows:icon'
-
-build-linux:
-	@$(MAKE) 'build:linux'
-
-build-linux-x64:
-	@$(MAKE) 'build:linux:x64'
-
-build-linux-arm64:
-	@$(MAKE) 'build:linux:arm64'
-
-build-ios:
-	@$(MAKE) 'build:ios'
-
-build-ios-app:
-	@$(MAKE) 'build:ios:app'
-
-build-ios-ipa:
-	@$(MAKE) 'build:ios:ipa'
-
-install-ios-debug:
-	@$(MAKE) 'install:ios:debug'
-
-install-ios-release:
-	@$(MAKE) 'install:ios:release'
-
-deploy-ios-device:
-	@$(MAKE) 'deploy:ios:device'
-
-build-android:
-	@$(MAKE) 'build:android'
-
-build-android-apk:
-	@$(MAKE) 'build:android:apk'
-
-build-android-libxray:
-	@$(MAKE) 'build:android:libxray'
-
-macos-intel:
-	@$(MAKE) 'build:macos:x64'
-
-macos-arm64:
-	@$(MAKE) 'build:macos:arm64'
-
-macos-debug-run:
-	@$(MAKE) 'run:macos:debug'
-
-windows-x64:
-	@$(MAKE) 'build:windows:x64'
-
-linux-x64:
-	@$(MAKE) 'build:linux:x64'
-
-linux-arm64:
-	@$(MAKE) 'build:linux:arm64'
-
-android-arm64:
-	@$(MAKE) 'build:android:apk'
-
-android-libxray:
-	@$(MAKE) 'build:android:libxray'
-
-android-apk:
-	@$(MAKE) 'build:android:apk'
-
-ios-arm64:
-	@$(MAKE) 'build:ios:app'
-
-ios-ipa:
-	@$(MAKE) 'build:ios:ipa'
-
-ios-install-debug:
-	@$(MAKE) 'install:ios:debug'
-
-ios-install-release:
-	@$(MAKE) 'install:ios:release'
-
-ios-deploy-device:
-	@$(MAKE) 'deploy:ios:device'
-
 mcp:
 	$(call run_target,$(MCP_ENV),mcp)
 
@@ -320,10 +195,3 @@ mcp-start-dev:
 
 mcp-start-runtime:
 	$(call run_target,MCP_MODE=start-runtime $(COMMON_ENV),xstream-mcp-start-runtime)
-
-xcode-debug-bootstrap: mcp-bootstrap
-xcode-mcp-doctor: mcp-doctor
-xstream-mcp-install: mcp-install
-xstream-mcp-start: mcp-start-dev
-xstream-mcp-start-dev: mcp-start-dev
-xstream-mcp-start-runtime: mcp-start-runtime

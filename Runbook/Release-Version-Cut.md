@@ -32,7 +32,7 @@ flutter analyze     # 必须零 issue
 编辑 `pubspec.yaml`：
 
 ```yaml
-version: X.Y.Z+BUILD
+version: X.Y.Z-BUILD
 ```
 
 更新 `CHANGELOG.md`：
@@ -49,7 +49,7 @@ version: X.Y.Z+BUILD
 
 ```bash
 git add pubspec.yaml CHANGELOG.md
-git commit -m "chore: bump version to X.Y.Z+BUILD"
+git commit -m "chore: bump version to X.Y.Z-BUILD"
 git push origin main
 ```
 

@@ -96,8 +96,8 @@ if [ -n "$AUTHORITY" ] && [ "$AUTHORITY" != "-" ]; then
   if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY="$AUTHORITY"
   fi
-  echo "re-signing app bundle with: $SIGN_IDENTITY ($AUTHORITY)"
-  codesign --force --deep --sign "$SIGN_IDENTITY" --timestamp=none "$APP_BUNDLE"
+  echo "re-signing app bundle with: $SIGN_IDENTITY ($AUTHORITY) preserving entitlements"
+  codesign --force --deep --sign "$SIGN_IDENTITY" --timestamp=none --preserve-metadata=identifier,entitlements,flags "$APP_BUNDLE"
 else
   echo "⚠️  no signing identity found on app bundle; skipping re-sign"
 fi

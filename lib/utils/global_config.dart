@@ -48,8 +48,8 @@ final String buildVersion = (() {
     defineBranch,
     'main',
   ]);
-  final buildId = defineBuildId;
-  final buildDate = defineBuildDate;
+  const buildId = defineBuildId;
+  const buildDate = defineBuildDate;
 
   final parts = <String>[
     _displayBranchLabel(branch),
@@ -75,11 +75,6 @@ class GlobalState {
   static final ValueNotifier<bool> showUnlockButton =
       ValueNotifier<bool>(false);
 
-  /// 解锁状态（true 表示已解锁）
-  static final ValueNotifier<bool> isUnlocked = ValueNotifier<bool>(false);
-
-  /// 当前解锁使用的 sudo 密码（可供原生调用或配置操作使用）
-  static final ValueNotifier<String> sudoPassword = ValueNotifier<String>('');
 
   /// 调试模式开关，由 `--debug` 参数控制
   static final ValueNotifier<bool> debugMode = ValueNotifier<bool>(false);

@@ -372,10 +372,6 @@ class DesktopSyncService {
 
   Future<void> _restartNodeIfPossible(String nodeName) async {
     try {
-      if (!GlobalState.isUnlocked.value) {
-        addAppLog('同步成功，等待解锁后手动重启服务');
-        return;
-      }
       await NativeBridge.stopNodeService(nodeName);
       await Future.delayed(const Duration(seconds: 1));
       await NativeBridge.startNodeService(nodeName);

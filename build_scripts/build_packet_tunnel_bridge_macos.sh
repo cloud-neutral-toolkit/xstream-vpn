@@ -69,6 +69,13 @@ if [[ ! -f "${TMP_LIB}" ]]; then
 fi
 
 cp -f "${TMP_LIB}" "${OUTPUT_LIB}"
+
+if [[ -n "${DWARF_DSYM_FOLDER_PATH:-}" ]]; then
+  echo "[xray-bridge] generating dSYM at ${DWARF_DSYM_FOLDER_PATH}/libxray_bridge.dylib.dSYM"
+  mkdir -p "${DWARF_DSYM_FOLDER_PATH}"
+  dsymutil "${OUTPUT_LIB}" -o "${DWARF_DSYM_FOLDER_PATH}/libxray_bridge.dylib.dSYM"
+fi
+
 rm -f "${OUTPUT_DIR}/libxray_bridge.h"
 chmod 755 "${OUTPUT_LIB}"
 

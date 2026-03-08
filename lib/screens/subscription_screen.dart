@@ -123,7 +123,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Future<void> _onCreateConfig() async {
     final rawUri = _vlessUriController.text.trim();
-    final requiresUnlock = !Platform.isIOS;
 
     if (_bundleId == null || _bundleId!.isEmpty) {
       setState(() {
@@ -138,23 +137,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         rawUri: rawUri,
         fallbackNodeName: _nodeNameController.text.trim(),
       );
-      return;
-    }
-
-    final unlocked = GlobalState.isUnlocked.value;
-    final password = GlobalState.sudoPassword.value;
-    if (requiresUnlock && !unlocked) {
-      setState(() {
-        _message = context.l10n.get('unlockFirst');
-      });
-      addAppLog('请先解锁后再创建配置', level: LogLevel.warning);
-      return;
-    }
-    if (requiresUnlock && password.isEmpty) {
-      setState(() {
-        _message = context.l10n.get('sudoMissing');
-      });
-      addAppLog('无法获取 sudo 密码', level: LogLevel.error);
       return;
     }
 
@@ -173,7 +155,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       domain: _domainController.text.trim(),
       port: _portController.text.trim(),
       uuid: _uuidController.text.trim(),
-      password: password,
+      password: '',
       bundleId: _bundleId!,
       setMessage: (msg) {
         setState(() {
@@ -192,23 +174,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     required String fallbackNodeName,
   }) async {
     if (_autoFlowRunning) return;
-    final requiresUnlock = !Platform.isIOS;
-    final unlocked = GlobalState.isUnlocked.value;
-    final password = GlobalState.sudoPassword.value;
-    if (requiresUnlock && !unlocked) {
-      setState(() {
-        _message = context.l10n.get('unlockFirst');
-      });
-      addAppLog('请先解锁后再创建配置', level: LogLevel.warning);
-      return;
-    }
-    if (requiresUnlock && password.isEmpty) {
-      setState(() {
-        _message = context.l10n.get('sudoMissing');
-      });
-      addAppLog('无法获取 sudo 密码', level: LogLevel.error);
-      return;
-    }
 
     try {
       _autoFlowRunning = true;
@@ -219,7 +184,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       await VpnConfig.generateFromVlessUri(
         vlessUri: rawUri,
         fallbackNodeName: fallbackNodeName,
-        password: password,
+        password: '',
         bundleId: _bundleId!,
         setMessage: (msg) {
           setState(() {

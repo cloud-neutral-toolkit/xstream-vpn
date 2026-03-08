@@ -1118,7 +1118,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildNodeOptionChip(
-      BuildContext context, VpnNode node, bool isUnlocked) {
+      BuildContext context, VpnNode node) {
     final isActive = _activeNode == node.name;
     final isSelected = _selectedNode == node.name;
     final isHighlighted = _highlightNode == node.name;
@@ -1159,11 +1159,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       onSelected:
-          (isUnlocked && !_isSwitchingNode) ? (_) => _selectNode(node) : null,
+          (!_isSwitchingNode) ? (_) => _selectNode(node) : null,
     );
   }
 
-  Widget _buildNodeSummarySection(BuildContext context, bool isUnlocked) {
+  Widget _buildNodeSummarySection(BuildContext context) {
     final node = _resolveActionNode();
     final hasNodes = vpnNodes.isNotEmpty;
 
@@ -1244,7 +1244,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         runSpacing: 8,
                         children: [
                           for (final node in vpnNodes)
-                            _buildNodeOptionChip(context, node, isUnlocked),
+                            _buildNodeOptionChip(context, node),
                         ],
                       ),
                     ),
@@ -1266,9 +1266,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: GlobalState.isUnlocked,
-      builder: (context, isUnlocked, _) {
         return LayoutBuilder(
           builder: (context, constraints) {
             return Stack(
@@ -1283,7 +1280,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         children: [
                           _buildMonitoringDashboard(context),
                           const SizedBox(height: 16),
-                          _buildNodeSummarySection(context, isUnlocked),
+                          _buildNodeSummarySection(context),
                         ],
                       ),
                     ),
@@ -1327,7 +1324,5 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             );
           },
         );
-      },
-    );
   }
 }

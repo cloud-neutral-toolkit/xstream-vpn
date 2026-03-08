@@ -24,7 +24,7 @@ void main() {
       );
 
       final bytes = request.toBytes();
-      final expectedLength = 1 + 32 + 1 + clientVersion.length + 24 + 8 + 4;
+      const expectedLength = 1 + 32 + 1 + clientVersion.length + 24 + 8 + 4;
       expect(bytes.length, expectedLength);
 
       expect(bytes[0], 1);

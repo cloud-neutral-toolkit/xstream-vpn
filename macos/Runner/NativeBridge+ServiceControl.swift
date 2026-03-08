@@ -4,10 +4,10 @@ import FlutterMacOS
 extension AppDelegate {
   func handleServiceControl(call: FlutterMethodCall, bundleId: String, result: @escaping FlutterResult) {
     let args = call.arguments as? [String: Any] ?? [:]
-    let serviceNameArg = args["serviceName"] as? String
-    let configPath = args["configPath"] as? String
-    let nodeName = (args["nodeName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let serviceName = serviceNameArg?.replacingOccurrences(of: ".plist", with: "")
+    let _ = args["serviceName"] as? String
+    let _ = args["configPath"] as? String
+    let _ = (args["nodeName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let _ = (args["serviceName"] as? String)?.replacingOccurrences(of: ".plist", with: "")
 
     switch call.method {
     case "startNodeService":

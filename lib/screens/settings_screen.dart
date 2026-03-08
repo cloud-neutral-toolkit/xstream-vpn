@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:archive/archive_io.dart';
 import '../../utils/global_config.dart'
     show GlobalState, DnsConfig, GlobalApplicationConfig, XhttpAdvancedConfig;
@@ -11,8 +10,6 @@ import '../l10n/app_localizations.dart';
 import '../../services/vpn_config_service.dart';
 import '../../services/telemetry/telemetry_service.dart';
 import '../../services/session/session_manager.dart';
-import '../../services/sync/desktop_sync_service.dart';
-import '../../services/sync/sync_state.dart';
 import '../../services/mcp/runtime_mcp_service.dart';
 import '../../utils/app_logger.dart';
 import '../screens/about_screen.dart';
@@ -33,7 +30,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       const PacketTunnelStatus(status: 'unknown', utunInterfaces: []);
 
   final SessionManager _sessionManager = SessionManager.instance;
-  final DesktopSyncService _syncService = DesktopSyncService.instance;
   final RuntimeMcpService _runtimeMcpService = RuntimeMcpService.instance;
   final TextEditingController _baseUrlController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
@@ -109,13 +105,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  String _formatDateTime(DateTime dt) {
-    String twoDigits(int v) => v.toString().padLeft(2, '0');
-    final local = dt.toLocal();
-    return '${local.year}-${twoDigits(local.month)}-${twoDigits(local.day)} '
-        '${twoDigits(local.hour)}:${twoDigits(local.minute)}';
-  }
-
   String _formatTunStatusText(BuildContext context, PacketTunnelStatus status) {
     final label = switch (status.status) {
       'connected' => context.l10n.get('tunStatusConnected'),
@@ -173,272 +162,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _handleLogin() async {
-    final isMfaStep = _sessionManager.status.value == SessionStatus.mfaRequired;
-    LoginResult result;
-    if (isMfaStep) {
-      final mfaCode = _mfaCodeController.text.trim();
-      if (mfaCode.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.get('mfaCodeMissing'))),
-        );
-        return;
-      }
-      result = await _sessionManager.verifyMfaCode(mfaCode);
-    } else {
-      final baseUrl = _baseUrlController.text.trim();
-      final identifier = _usernameController.text.trim();
-      final password = _passwordController.text;
-      if (baseUrl.isEmpty || identifier.isEmpty || password.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.l10n.get('loginMissingFields'))),
-        );
-        return;
-      }
-      await _sessionManager.setBaseUrl(baseUrl);
-      result = await _sessionManager.login(
-        identifier: identifier,
-        password: password,
-      );
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result.message)),
-    );
-
-    if (result.success && _sessionManager.isLoggedIn) {
-      _passwordController.clear();
-      _mfaCodeController.clear();
-      final syncResult = await _syncService.syncNow(manual: true);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(syncResult.message)),
-      );
-    }
-  }
-
-  Future<void> _handleLogout() async {
-    await _sessionManager.logout();
-    _mfaCodeController.clear();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.l10n.get('logoutSuccess'))),
-    );
-  }
-
-  Future<void> _handleSyncNow() async {
-    final result = await _syncService.syncNow(manual: true);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result.message)),
-    );
-  }
-
-  Widget _buildDesktopSyncCard(BuildContext context) {
-    return ValueListenableBuilder<SessionStatus>(
-      valueListenable: _sessionManager.status,
-      builder: (context, status, _) {
-        final isLoggedIn = status == SessionStatus.loggedIn;
-        final isMfaRequired = status == SessionStatus.mfaRequired;
-        return ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: Card(
-            elevation: 1,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.l10n.get('accountLogin'),
-                    style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: _sessionManager.loading,
-                    builder: (context, loading, _) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          TextField(
-                            controller: _baseUrlController,
-                            decoration: InputDecoration(
-                              labelText: context.l10n.get('serverAddress'),
-                            ),
-                            onSubmitted: (_) => _sessionManager
-                                .setBaseUrl(_baseUrlController.text),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _usernameController,
-                            enabled: !loading && !isLoggedIn && !isMfaRequired,
-                            keyboardType: TextInputType.emailAddress,
-                            autofillHints: const [
-                              AutofillHints.username,
-                              AutofillHints.email,
-                            ],
-                            decoration: InputDecoration(
-                              labelText: context.l10n.get('accountOrEmail'),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            enabled: !loading && !isLoggedIn && !isMfaRequired,
-                            autofillHints: const [AutofillHints.password],
-                            decoration: InputDecoration(
-                              labelText: context.l10n.get('password'),
-                            ),
-                          ),
-                          if (isMfaRequired) ...[
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: _mfaCodeController,
-                              enabled: !loading && !isLoggedIn,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(6),
-                              ],
-                              decoration: InputDecoration(
-                                labelText: context.l10n.get('mfaCode'),
-                                helperText: context.l10n.get('mfaRequiredHint'),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              ElevatedButton.icon(
-                                onPressed: loading
-                                    ? null
-                                    : (isLoggedIn
-                                        ? _handleLogout
-                                        : _handleLogin),
-                                icon: Icon(
-                                  isLoggedIn
-                                      ? Icons.logout
-                                      : (isMfaRequired
-                                          ? Icons.verified
-                                          : Icons.login),
-                                ),
-                                label: Text(
-                                  context.l10n.get(isLoggedIn
-                                      ? 'logout'
-                                      : (isMfaRequired
-                                          ? 'verifyMfa'
-                                          : 'login')),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              ValueListenableBuilder<bool>(
-                                valueListenable: _syncService.syncing,
-                                builder: (context, syncing, _) {
-                                  return ElevatedButton.icon(
-                                    onPressed: isLoggedIn && !syncing
-                                        ? _handleSyncNow
-                                        : null,
-                                    icon: syncing
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(Icons.sync),
-                                    label: Text(
-                                      syncing
-                                          ? context.l10n.get('syncInProgress')
-                                          : context.l10n.get('syncNow'),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          ValueListenableBuilder<String?>(
-                            valueListenable: _sessionManager.lastError,
-                            builder: (context, error, _) {
-                              if (error == null || isLoggedIn) {
-                                return const SizedBox.shrink();
-                              }
-                              return Text(
-                                error,
-                                style: const TextStyle(
-                                    color: Colors.redAccent, fontSize: 12),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 4),
-                          ValueListenableBuilder<SyncSummary>(
-                            valueListenable: SyncStateStore.instance.summary,
-                            builder: (context, summary, _) {
-                              final lastSync = summary.lastSuccessAt != null
-                                  ? _formatDateTime(summary.lastSuccessAt!)
-                                  : context.l10n.get('never');
-                              final metadata = summary.subscriptionMetadata;
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${context.l10n.get('lastSyncTime')}: $lastSync',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  Text(
-                                    '${context.l10n.get('configVersion')}: ${summary.configVersion}',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  if (metadata != null && metadata.isNotEmpty)
-                                    Text(
-                                      '${context.l10n.get('subscriptionMetadata')}: $metadata',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  if (summary.lastError != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                        summary.lastError!,
-                                        style: const TextStyle(
-                                          color: Colors.redAccent,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                  if (!isLoggedIn)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text(
-                                        context.l10n.get('syncNotLoggedIn'),
-                                        style: const TextStyle(
-                                          color: Colors.grey,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _onSyncConfig() async {
     addAppLog('开始同步配置...');
     try {
@@ -468,7 +191,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _onImportConfig() async {
-    final requiresUnlock = !Platform.isIOS;
     final controller = TextEditingController();
     final input = await showDialog<String>(
       context: context,
@@ -499,20 +221,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     addAppLog('开始导入配置...');
     try {
       if (input.startsWith('vless://')) {
-        if (requiresUnlock && !GlobalState.isUnlocked.value) {
-          addAppLog('请先解锁再导入 VLESS 配置', level: LogLevel.warning);
-          return;
-        }
-        final password = GlobalState.sudoPassword.value;
-        if (requiresUnlock && password.isEmpty) {
-          addAppLog('无法获取 sudo 密码', level: LogLevel.error);
-          return;
-        }
         final bundleId = await GlobalApplicationConfig.getBundleId();
         final profile = VpnConfig.parseVlessUri(input);
         await VpnConfig.generateFromVlessUri(
           vlessUri: input,
-          password: password,
+          password: '',
           bundleId: bundleId,
           setMessage: (msg) => addAppLog(msg),
           logMessage: (msg) => addAppLog(msg),
@@ -605,11 +318,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _onDeleteConfig() async {
-    if (!GlobalState.isUnlocked.value) {
-      addAppLog('请先解锁以删除配置', level: LogLevel.warning);
-      return;
-    }
-
     await VpnConfig.load();
     final nodes = List<VpnNode>.from(VpnConfig.nodes);
     if (nodes.isEmpty) {
@@ -693,17 +401,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _onResetAll() async {
-    final isUnlocked = GlobalState.isUnlocked.value;
-    final password = GlobalState.sudoPassword.value;
-
-    if (!isUnlocked) {
-      addAppLog('请先解锁以执行重置操作', level: LogLevel.warning);
-      return;
-    }
-
     addAppLog('开始重置配置与文件...');
     try {
-      final result = await NativeBridge.resetXrayAndConfig(password);
+      final result = await NativeBridge.resetXrayAndConfig('');
       addAppLog(result);
     } catch (e) {
       addAppLog('[错误] 重置失败: $e', level: LogLevel.error);
@@ -1077,16 +777,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
               ),
-              child: ValueListenableBuilder<bool>(
-                valueListenable: GlobalState.isUnlocked,
-                builder: (context, isUnlocked, _) {
-                  final allowSensitiveActions = Platform.isIOS || isUnlocked;
-                  return Column(
+              child: Column(
                     children: [
                       ListTile(
                         leading: const Icon(Icons.sync),
                         title: Text(context.l10n.get('syncConfig')),
-                        onTap: allowSensitiveActions ? _onSyncConfig : null,
+                        onTap: _onSyncConfig,
                       ),
                       const Divider(height: 1, indent: 16, endIndent: 16),
                       ListTile(
@@ -1106,13 +802,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(Icons.delete_forever, color: Colors.red[400]),
                         title: Text(context.l10n.get('deleteConfig'),
                             style: TextStyle(color: Colors.red[400])),
-                        onTap: allowSensitiveActions ? _onDeleteConfig : null,
                       ),
                     ],
-                  );
-                },
+                  ),
               ),
-            ),
             const SizedBox(height: 20),
             // DNS & Tunnel
             Container(
@@ -1284,28 +977,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ValueListenableBuilder<bool>(
-              valueListenable: GlobalState.isUnlocked,
-              builder: (context, isUnlocked, _) {
-                return SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.restore),
-                    label: Text(context.l10n.get('resetAll'),
-                        style: const TextStyle(fontSize: 16)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[500],
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                    ),
-                    onPressed: isUnlocked ? _onResetAll : null,
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.restore),
+                label: Text(context.l10n.get('resetAll'),
+                    style: const TextStyle(fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red[500],
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                );
-              },
+                ),
+                onPressed: _onResetAll,
+              ),
             ),
             const SizedBox(height: 32),
           ],
@@ -1328,17 +1016,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 8),
             const SizedBox(height: 16),
-            ValueListenableBuilder<bool>(
-              valueListenable: GlobalState.isUnlocked,
-              builder: (context, isUnlocked, _) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSection(context.l10n.get('xrayMgmt'), [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSection(context.l10n.get('xrayMgmt'), [
                       _buildButton(
                         icon: Icons.sync,
                         label: context.l10n.get('syncConfig'),
-                        onPressed: isUnlocked ? _onSyncConfig : null,
+                        onPressed: _onSyncConfig,
                       ),
                       _buildButton(
                         icon: Icons.upload_file,
@@ -1357,7 +1042,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           backgroundColor:
                               WidgetStateProperty.all(Colors.red[400]),
                         ),
-                        onPressed: isUnlocked ? _onDeleteConfig : null,
+                        onPressed: _onDeleteConfig,
                       ),
                       _buildButton(
                         icon: Icons.save,
@@ -1378,7 +1063,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           backgroundColor:
                               WidgetStateProperty.all(Colors.red[400]),
                         ),
-                        onPressed: isUnlocked ? _onResetAll : null,
+                        onPressed: _onResetAll,
                       ),
                     ]),
                     _buildSection(context.l10n.get('advancedConfig'), [
@@ -1539,19 +1224,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       ),
                     ]),
-                    if (!isUnlocked)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          context.l10n.get('unlockFirst'),
-                          style:
-                              const TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ),
                   ],
-                );
-              },
-            ),
+                ),
             const Divider(height: 32),
             ListTile(
               leading: const Icon(Icons.stacked_line_chart),

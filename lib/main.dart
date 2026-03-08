@@ -118,8 +118,6 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // ✅ 注册生命周期观察器
     if (Platform.isIOS) {
-      GlobalState.isUnlocked.value = true;
-      GlobalState.sudoPassword.value = '';
       GlobalState.setTunnelModeEnabled(true);
     }
 
@@ -152,41 +150,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _promptUnlockDialog() async {
-    String? password = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        final controller = TextEditingController();
-        return AlertDialog(
-          title: Text(context.l10n.get('unlockPrompt')),
-          content: TextField(
-            controller: controller,
-            obscureText: true,
-            decoration:
-                InputDecoration(labelText: context.l10n.get('password')),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(context.l10n.get('cancel'))),
-            TextButton(
-                onPressed: () => Navigator.pop(context, controller.text),
-                child: Text(context.l10n.get('confirm'))),
-          ],
-        );
-      },
-    );
 
-    if (password != null && password.isNotEmpty) {
-      GlobalState.isUnlocked.value = true;
-      GlobalState.sudoPassword.value = password;
-    }
-  }
-
-  void _lock() {
-    GlobalState.isUnlocked.value = false;
-    GlobalState.sudoPassword.value = '';
-  }
 
   void _openAddConfig() {
     Navigator.of(context).push(
@@ -632,6 +596,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                   );
                 },
               ),
+              const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: PopupMenuButton<_AddNodeMenuAction>(
@@ -698,23 +663,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              ValueListenableBuilder<bool>(
-                valueListenable: GlobalState.showUnlockButton,
-                builder: (context, show, _) {
-                  if (!show || Platform.isIOS) {
-                    return const SizedBox.shrink();
-                  }
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: GlobalState.isUnlocked,
-                    builder: (context, unlocked, _) {
-                      return IconButton(
-                        icon: Icon(unlocked ? Icons.lock_open : Icons.lock),
-                        onPressed: unlocked ? _lock : _promptUnlockDialog,
-                      );
-                    },
-                  );
-                },
-              ),
+              const SizedBox(width: 16),
             ],
           ),
           bottomNavigationBar: isMobile

@@ -130,9 +130,7 @@ class VpnConfig {
 
   static List<VpnNode> _nodes = [];
 
-  static bool get _requiresPrivilegedPassword {
-    return !(Platform.isIOS || Platform.isAndroid);
-  }
+
 
   static bool get _requiresServiceDefinition {
     return !(Platform.isIOS || Platform.isAndroid);
@@ -268,9 +266,7 @@ class VpnConfig {
     required Function(String) setMessage,
     required Function(String) logMessage,
   }) async {
-    if (_requiresPrivilegedPassword) {
-      checkNotEmpty(password, 'password');
-    }
+
     checkNotNull(setMessage, 'setMessage');
     checkNotNull(logMessage, 'logMessage');
     final bundleId = await GlobalApplicationConfig.getBundleId();
@@ -325,9 +321,7 @@ class VpnConfig {
     checkNotEmpty(domain, 'domain');
     checkNotEmpty(port, 'port');
     checkNotEmpty(uuid, 'uuid');
-    if (_requiresPrivilegedPassword) {
-      checkNotEmpty(password, 'password');
-    }
+
     checkNotEmpty(bundleId, 'bundleId');
     checkNotNull(setMessage, 'setMessage');
     checkNotNull(logMessage, 'logMessage');

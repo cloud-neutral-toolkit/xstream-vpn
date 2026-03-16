@@ -50,7 +50,27 @@ flutter build windows
 
 该脚本会从 `bindings/libgo_native_bridge.dll` 复制最新 bridge 产物到 `build/windows/x64/runner/Release/`，然后将整个 Release 目录压缩为 `xstream-windows.zip`。
 
-## 5. 打包 MSIX 以便上架 Microsoft Store
+为了降低对目标机器 VC Runtime 预装状态的依赖，脚本会优先从本机 Visual Studio Build Tools 的 redist 目录补齐 `msvcp140.dll`、`vcruntime140.dll` 和 `vcruntime140_1.dll`。
+
+如果打包目录里缺少 `wintun.dll`，脚本还会自动从官方 `wintun.net` 下载 `Wintun 0.14.1`，校验 SHA-256 后提取 `bin/amd64/wintun.dll` 到发布目录。这样标准 ZIP 与单文件 launcher 都能在应用目录旁拿到 `wintun.dll`。
+
+## 5. 单文件 Windows Launcher
+
+如果你需要一个“单文件分发”的 `xstream.exe`，请执行：
+
+```powershell
+./build_scripts/package_windows_single_file.ps1
+```
+
+该脚本会生成：
+
+- `build/windows/x64/portable/xstream.exe`
+
+这个文件是一个 **self-extract launcher**：它会把 Flutter Windows 运行时、`flutter_windows.dll`、`data/`、插件 DLL 与 `libgo_native_bridge.dll` 一起嵌入到单个外层 `xstream.exe` 中，启动时自动解压到用户缓存目录后再拉起内层运行时。
+
+> 说明：基于当前 Flutter Windows 发布形态，真正“无任何运行时文件、直接把 Flutter engine 和资源全部静态并入同一个原生 PE”的方式并不现实。这里提供的是可落地的单文件分发方案。
+
+## 6. 打包 MSIX 以便上架 Microsoft Store
 
 项目已经支持通过 [msix](https://pub.dev/packages/msix) 插件生成可上架 Microsoft Store 的安装包。在 Windows 环境执行：
 

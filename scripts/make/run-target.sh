@@ -271,6 +271,18 @@ case "$TARGET" in
       echo "Windows build only supported on native Windows systems"
     fi
     ;;
+  windows-single-file)
+    if [[ "$uname_s" == "Windows_NT" || "${OS:-}" == "Windows_NT" ]]; then
+      echo "Building single-file Windows launcher..."
+      ./build_scripts/build_windows.sh
+      "$flutter_bin" pub get
+      "$flutter_bin" build windows --release "${common_dart_defines[@]}"
+      powershell.exe -ExecutionPolicy Bypass -File ./build_scripts/package_windows_bundle.ps1
+      powershell.exe -ExecutionPolicy Bypass -File ./build_scripts/package_windows_single_file.ps1
+    else
+      echo "Windows build only supported on native Windows systems"
+    fi
+    ;;
   linux-x64)
     if [[ "$uname_s" == "Linux" ]]; then
       echo "Building for Linux x64..."

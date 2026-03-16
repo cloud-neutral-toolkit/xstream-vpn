@@ -34,6 +34,21 @@
 
 ---
 
+## 🖼️ Experience Snapshot
+
+| 初始配置 | 同步配置 |
+|---|---|
+| ![Init Xray](docs/images/init-xray.png) | ![Sync Config](docs/images/sync-config.png) |
+
+| 节点解锁 | 自定义节点表单 |
+|---|---|
+| ![Unlock Button](docs/images/unlock-button.png) | ![Custom Node Form](docs/images/custom-node-form.png) |
+
+| 日志与诊断 |
+|---|
+| ![Log Result](docs/images/log-result.png) |
+
+---
 
 ## 🚀 快速开始
 

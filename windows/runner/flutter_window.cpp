@@ -218,6 +218,8 @@ std::string FlutterWindow::MenuText(MenuTextKey key) const {
     case MenuTextKey::kQuitAndStopAcceleration:
       return "Quit & Stop Acceleration";
   }
+
+  return "";
 }
 
 void FlutterWindow::InvokeFlutterMenuAction(

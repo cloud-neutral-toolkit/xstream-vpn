@@ -2,6 +2,9 @@
 
 package main
 
+/*
+#include <stdlib.h>
+*/
 import "C"
 import (
 	"encoding/json"
@@ -295,10 +298,10 @@ func StopXray() *C.char {
 //export GetDesktopRuntimeSnapshot
 func GetDesktopRuntimeSnapshot() *C.char {
 	snapshot := desktopRuntimeSnapshot{
-		Running:   xray.GetXrayState(),
+		Running:     xray.GetXrayState(),
 		MemoryBytes: currentWorkingSetBytes(),
 		CPUPercent:  currentCPUPercent(),
-		UpdatedAt: time.Now().UnixMilli(),
+		UpdatedAt:   time.Now().UnixMilli(),
 	}
 	payload, err := json.Marshal(snapshot)
 	if err != nil {
@@ -410,3 +413,5 @@ func InitTray() {
 		}()
 	})
 }
+
+func main() {}

@@ -13,18 +13,20 @@ import 'global_config.dart';
 
 class NativeBridge {
   static const MethodChannel _channel = MethodChannel('com.xstream/native');
-  static const MethodChannel _loggerChannel =
-      MethodChannel('com.xstream/logger');
+  static const MethodChannel _loggerChannel = MethodChannel(
+    'com.xstream/logger',
+  );
   static final darwin_host.DarwinHostApi _darwinHostApi =
       darwin_host.DarwinHostApi();
   static bool _darwinFlutterApiReady = false;
   static Future<void> Function(String action, Map<String, dynamic> payload)?
-      _nativeMenuActionHandler;
+  _nativeMenuActionHandler;
   static String? _mobileActiveNodeName;
   static String? _darwinAppGroupPathCache;
   static Future<void> _connectionLifecycleQueue = Future<void>.value();
 
-  static final bool _useFfi = Platform.isWindows ||
+  static final bool _useFfi =
+      Platform.isWindows ||
       Platform.isLinux ||
       Platform.isMacOS ||
       Platform.isIOS ||
@@ -57,18 +59,19 @@ class NativeBridge {
     utunInterfaces: [],
   );
   static const _tunMetricsFallback = PacketTunnelMetricsSnapshot();
+  static const _desktopRuntimeSnapshotFallback = DesktopRuntimeSnapshot();
 
-  static Future<T> _runSerializedConnectionOp<T>(
-    Future<T> Function() action,
-  ) {
+  static Future<T> _runSerializedConnectionOp<T>(Future<T> Function() action) {
     final completer = Completer<T>();
-    _connectionLifecycleQueue = _connectionLifecycleQueue.then((_) async {
-      try {
-        completer.complete(await action());
-      } catch (error, stackTrace) {
-        completer.completeError(error, stackTrace);
-      }
-    }).catchError((_) {});
+    _connectionLifecycleQueue = _connectionLifecycleQueue
+        .then((_) async {
+          try {
+            completer.complete(await action());
+          } catch (error, stackTrace) {
+            completer.completeError(error, stackTrace);
+          }
+        })
+        .catchError((_) {});
     return completer.future;
   }
 
@@ -127,8 +130,15 @@ class NativeBridge {
       final p5 = vpnNodesConfigPath.toNativeUtf8();
       final p6 = vpnNodesConfigContent.toNativeUtf8();
       final pwd = password.toNativeUtf8();
-      final resPtr = _ffi.writeConfigFiles(p1.cast(), p2.cast(), p3.cast(),
-          p4.cast(), p5.cast(), p6.cast(), pwd.cast());
+      final resPtr = _ffi.writeConfigFiles(
+        p1.cast(),
+        p2.cast(),
+        p3.cast(),
+        p4.cast(),
+        p5.cast(),
+        p6.cast(),
+        pwd.cast(),
+      );
       final result = resPtr.cast<Utf8>().toDartString();
       _ffi.freeCString(resPtr);
       malloc.free(p1);
@@ -207,8 +217,10 @@ class NativeBridge {
           configPath: runtimeConfigPath,
         );
         await _channel.invokeMethod<String>('savePacketTunnelProfile', profile);
-        final result =
-            await _channel.invokeMethod<String>('startPacketTunnel', profile);
+        final result = await _channel.invokeMethod<String>(
+          'startPacketTunnel',
+          profile,
+        );
         if (result != null && !result.toLowerCase().contains('fail')) {
           _mobileActiveNodeName = nodeName;
         }
@@ -406,14 +418,11 @@ class NativeBridge {
       return result;
     } else {
       try {
-        final result = await _channel.invokeMethod<String>(
-          'startNodeService',
-          {
-            'serviceName': node.serviceName,
-            'nodeName': node.name,
-            'configPath': runtimeConfigPath,
-          },
-        );
+        final result = await _channel.invokeMethod<String>('startNodeService', {
+          'serviceName': node.serviceName,
+          'nodeName': node.name,
+          'configPath': runtimeConfigPath,
+        });
         return result ?? '启动成功';
       } on MissingPluginException {
         return '插件未实现';
@@ -425,9 +434,7 @@ class NativeBridge {
 
   // 停止节点服务
   static Future<String> stopNodeService(String nodeName) {
-    return _runSerializedConnectionOp(
-      () => _stopNodeServiceInternal(nodeName),
-    );
+    return _runSerializedConnectionOp(() => _stopNodeServiceInternal(nodeName));
   }
 
   static Future<String> _stopNodeServiceInternal(String nodeName) async {
@@ -460,10 +467,9 @@ class NativeBridge {
       return result;
     } else {
       try {
-        final result = await _channel.invokeMethod<String>(
-          'stopNodeService',
-          {'serviceName': node.serviceName},
-        );
+        final result = await _channel.invokeMethod<String>('stopNodeService', {
+          'serviceName': node.serviceName,
+        });
         return result ?? '已停止';
       } on MissingPluginException {
         return '插件未实现';
@@ -490,14 +496,11 @@ class NativeBridge {
       return res == 1;
     } else {
       try {
-        final result = await _channel.invokeMethod<bool>(
-          'checkNodeStatus',
-          {
-            'serviceName': node.serviceName,
-            'nodeName': node.name,
-            'configPath': node.configPath,
-          },
-        );
+        final result = await _channel.invokeMethod<bool>('checkNodeStatus', {
+          'serviceName': node.serviceName,
+          'nodeName': node.name,
+          'configPath': node.configPath,
+        });
         return result ?? false;
       } on MissingPluginException {
         return false;
@@ -523,12 +526,13 @@ class NativeBridge {
     _nativeMenuActionHandler = onAction;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'nativeMenuAction') {
-        final args = (call.arguments as Map?)?.cast<Object?, Object?>() ??
+        final args =
+            (call.arguments as Map?)?.cast<Object?, Object?>() ??
             <Object?, Object?>{};
         final action = (args['action'] as String?) ?? '';
         final payloadRaw =
             (args['payload'] as Map?)?.cast<Object?, Object?>() ??
-                <Object?, Object?>{};
+            <Object?, Object?>{};
         final payload = <String, dynamic>{};
         payloadRaw.forEach((key, value) {
           if (key is String) {
@@ -551,7 +555,7 @@ class NativeBridge {
     required String proxyMode,
     required String languageCode,
   }) async {
-    if (!Platform.isMacOS) return;
+    if (!(Platform.isMacOS || Platform.isWindows)) return;
     try {
       await _channel.invokeMethod<String>('updateMenuState', {
         'connected': connected,
@@ -570,10 +574,9 @@ class NativeBridge {
       return res == 1;
     } else {
       try {
-        final result = await _channel.invokeMethod<String>(
-          'performAction',
-          {'action': 'isXrayDownloading'},
-        );
+        final result = await _channel.invokeMethod<String>('performAction', {
+          'action': 'isXrayDownloading',
+        });
         return result == '1';
       } on MissingPluginException {
         return false;
@@ -597,13 +600,10 @@ class NativeBridge {
       return result;
     } else {
       try {
-        final result = await _channel.invokeMethod<String>(
-          'performAction',
-          {
-            'action': 'resetXrayAndConfig',
-            'password': password,
-          },
-        );
+        final result = await _channel.invokeMethod<String>('performAction', {
+          'action': 'resetXrayAndConfig',
+          'password': password,
+        });
         return result ?? '重置完成';
       } on MissingPluginException {
         return '插件未实现';
@@ -630,14 +630,57 @@ class NativeBridge {
   }
 
   static Future<String> verifySocks5Proxy() async {
-    if (!Platform.isMacOS) return '当前平台暂不支持';
+    if (Platform.isMacOS) {
+      try {
+        final result = await _channel.invokeMethod<String>('verifySocks5Proxy');
+        return result ?? '验证失败: 无返回';
+      } on MissingPluginException {
+        return '插件未实现';
+      } catch (e) {
+        return '验证失败: $e';
+      }
+    }
+
+    if (_isDesktop) {
+      try {
+        final port = int.tryParse(GlobalState.socksPort.value) ?? 1080;
+        final socket = await Socket.connect(
+          InternetAddress.loopbackIPv4,
+          port,
+          timeout: const Duration(seconds: 3),
+        );
+        await socket.close();
+        return 'success: local SOCKS proxy is reachable';
+      } catch (e) {
+        return '验证失败: $e';
+      }
+    }
+
+    return '当前平台暂不支持';
+  }
+
+  static Future<DesktopRuntimeSnapshot> getDesktopRuntimeSnapshot() async {
+    if (!(Platform.isWindows || Platform.isLinux)) {
+      return _desktopRuntimeSnapshotFallback;
+    }
+    if (!_useFfi) {
+      return _desktopRuntimeSnapshotFallback;
+    }
+    final getter = _ffi.getDesktopRuntimeSnapshot;
+    if (getter == null) {
+      return _desktopRuntimeSnapshotFallback;
+    }
     try {
-      final result = await _channel.invokeMethod<String>('verifySocks5Proxy');
-      return result ?? '验证失败: 无返回';
-    } on MissingPluginException {
-      return '插件未实现';
+      final resPtr = getter();
+      final result = resPtr.cast<Utf8>().toDartString();
+      _ffi.freeCString(resPtr);
+      return DesktopRuntimeSnapshot.fromJsonString(result);
     } catch (e) {
-      return '验证失败: $e';
+      addAppLog(
+        'Desktop runtime snapshot query failed: $e',
+        level: LogLevel.error,
+      );
+      return _desktopRuntimeSnapshotFallback;
     }
   }
 
@@ -754,10 +797,7 @@ class NativeBridge {
   static Future<String> _resolveOrBootstrapIosTunnelConfigPath() async {
     final resolved = await _resolveTunnelConfigPath();
     if (resolved != null) {
-      return _prepareCanonicalTunnelConfigPath(
-        resolved,
-        isTunMode: true,
-      );
+      return _prepareCanonicalTunnelConfigPath(resolved, isTunMode: true);
     }
     return _bootstrapNodeConfigPath(isTunMode: true);
   }
@@ -803,8 +843,9 @@ class NativeBridge {
       );
       sourceJson['inbounds'] = jsonDecode(newInboundsStr);
 
-      final updatedJsonStr =
-          const JsonEncoder.withIndent('  ').convert(sourceJson);
+      final updatedJsonStr = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(sourceJson);
       if (sourceJsonStr != updatedJsonStr) {
         await sourceFile.writeAsString(updatedJsonStr);
       }
@@ -852,9 +893,7 @@ class NativeBridge {
     return bootstrapPath;
   }
 
-  static String _buildBootstrapNodeConfigString({
-    required bool isTunMode,
-  }) {
+  static String _buildBootstrapNodeConfigString({required bool isTunMode}) {
     final disableLocalProxyInPacketTunnel = Platform.isIOS && isTunMode;
     final inboundsStr = VpnConfig.generateInboundsConfig(
       enableSocksProxy: !disableLocalProxyInPacketTunnel,
@@ -1051,8 +1090,10 @@ class NativeBridge {
           configPath: canonicalPath,
         );
         await _channel.invokeMethod<String>('savePacketTunnelProfile', profile);
-        final result =
-            await _channel.invokeMethod<String>('startPacketTunnel', profile);
+        final result = await _channel.invokeMethod<String>(
+          'startPacketTunnel',
+          profile,
+        );
         return result ?? 'Packet Tunnel start request submitted';
       } on MissingPluginException {
         return '插件未实现';
@@ -1176,6 +1217,14 @@ class NativeBridge {
       }
     }
 
+    if (Platform.isWindows || Platform.isLinux) {
+      final snapshot = await getDesktopRuntimeSnapshot();
+      return PacketTunnelStatus(
+        status: snapshot.running ? 'connected' : 'disconnected',
+        utunInterfaces: const [],
+      );
+    }
+
     if (!_isDarwin) return _tunStatusFallback;
     _ensureDarwinFlutterApiReady();
     try {
@@ -1193,15 +1242,23 @@ class NativeBridge {
       );
       return _tunStatusFallback;
     } catch (e) {
-      addAppLog(
-        'Packet Tunnel status query failed: $e',
-        level: LogLevel.error,
-      );
+      addAppLog('Packet Tunnel status query failed: $e', level: LogLevel.error);
       return _tunStatusFallback;
     }
   }
 
   static Future<PacketTunnelMetricsSnapshot> getPacketTunnelMetrics() async {
+    if (Platform.isWindows || Platform.isLinux) {
+      final snapshot = await getDesktopRuntimeSnapshot();
+      return PacketTunnelMetricsSnapshot(
+        downloadBytesPerSecond: snapshot.downloadBytesPerSecond,
+        uploadBytesPerSecond: snapshot.uploadBytesPerSecond,
+        memoryBytes: snapshot.memoryBytes,
+        cpuPercent: snapshot.cpuPercent,
+        updatedAt: snapshot.updatedAt,
+      );
+    }
+
     if (!_isDarwin) return _tunMetricsFallback;
     _ensureDarwinFlutterApiReady();
     try {
@@ -1343,10 +1400,7 @@ class NativeBridge {
 class _DarwinFlutterApiImpl extends darwin_host.DarwinFlutterApi {
   @override
   void onPacketTunnelError(String code, String message) {
-    addAppLog(
-      'Packet Tunnel error ($code): $message',
-      level: LogLevel.error,
-    );
+    addAppLog('Packet Tunnel error ($code): $message', level: LogLevel.error);
   }
 
   @override
@@ -1383,8 +1437,9 @@ class PacketTunnelStatus {
   factory PacketTunnelStatus.fromMap(Map<Object?, Object?> map) {
     final status = map['status'] as String? ?? 'unknown';
     final utunRaw = map['utun'];
-    final utunList =
-        utunRaw is List ? utunRaw.whereType<String>().toList() : <String>[];
+    final utunList = utunRaw is List
+        ? utunRaw.whereType<String>().toList()
+        : <String>[];
     final lastError = map['lastError'] as String?;
     final startedAtRaw = map['startedAt'];
     final startedAt = startedAtRaw is int ? startedAtRaw : null;
@@ -1394,6 +1449,48 @@ class PacketTunnelStatus {
       lastError: lastError,
       startedAt: startedAt,
     );
+  }
+}
+
+class DesktopRuntimeSnapshot {
+  final bool running;
+  final int? downloadBytesPerSecond;
+  final int? uploadBytesPerSecond;
+  final int? memoryBytes;
+  final double? cpuPercent;
+  final int? updatedAt;
+
+  const DesktopRuntimeSnapshot({
+    this.running = false,
+    this.downloadBytesPerSecond,
+    this.uploadBytesPerSecond,
+    this.memoryBytes,
+    this.cpuPercent,
+    this.updatedAt,
+  });
+
+  factory DesktopRuntimeSnapshot.fromJsonString(String jsonString) {
+    if (jsonString.trim().isEmpty) {
+      return const DesktopRuntimeSnapshot();
+    }
+
+    try {
+      final raw = jsonDecode(jsonString);
+      if (raw is! Map<String, dynamic>) {
+        return const DesktopRuntimeSnapshot();
+      }
+      return DesktopRuntimeSnapshot(
+        running: raw['running'] == true,
+        downloadBytesPerSecond: (raw['downloadBytesPerSecond'] as num?)
+            ?.toInt(),
+        uploadBytesPerSecond: (raw['uploadBytesPerSecond'] as num?)?.toInt(),
+        memoryBytes: (raw['memoryBytes'] as num?)?.toInt(),
+        cpuPercent: (raw['cpuPercent'] as num?)?.toDouble(),
+        updatedAt: (raw['updatedAt'] as num?)?.toInt(),
+      );
+    } catch (_) {
+      return const DesktopRuntimeSnapshot();
+    }
   }
 }
 

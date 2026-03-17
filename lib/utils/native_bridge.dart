@@ -91,6 +91,7 @@ class NativeBridge {
     utunInterfaces: [],
   );
   static const _tunMetricsFallback = PacketTunnelMetricsSnapshot();
+  static bool _linuxDesktopInitialized = false;
 
   static Future<T> _runSerializedConnectionOp<T>(Future<T> Function() action) {
     final completer = Completer<T>();
@@ -104,6 +105,93 @@ class NativeBridge {
         })
         .catchError((_) {});
     return completer.future;
+  }
+
+  static Future<Map<String, dynamic>> _invokeLinuxDesktopCommand(
+    String action, {
+    Map<String, dynamic>? payload,
+  }) async {
+    if (!Platform.isLinux) {
+      return <String, dynamic>{'ok': false, 'message': '当前平台暂不支持'};
+    }
+    final request = <String, dynamic>{'action': action, ...?payload};
+    final requestPtr = jsonEncode(request).toNativeUtf8();
+    try {
+      final resPtr = _ffi.desktopIntegrationCommand(requestPtr.cast());
+      final response = resPtr.cast<Utf8>().toDartString();
+      _ffi.freeCString(resPtr);
+      final decoded = jsonDecode(response);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return decoded.cast<String, dynamic>();
+      }
+      return <String, dynamic>{'ok': false, 'message': 'unexpected response'};
+    } finally {
+      malloc.free(requestPtr);
+    }
+  }
+
+  static Future<void> initializeLinuxDesktopIntegration() async {
+    if (!Platform.isLinux || _linuxDesktopInitialized) {
+      return;
+    }
+    _linuxDesktopInitialized = true;
+    if (_useFfi) {
+      try {
+        _ffi.initTray();
+      } catch (_) {}
+    }
+  }
+
+  static Future<LinuxDesktopIntegrationStatus>
+  getLinuxDesktopIntegrationStatus() async {
+    if (!Platform.isLinux) {
+      return const LinuxDesktopIntegrationStatus(
+        desktopEnvironment: 'unsupported',
+        autostartEnabled: false,
+        privilegeReady: false,
+      );
+    }
+    final response = await _invokeLinuxDesktopCommand('getDesktopEnvironment');
+    return LinuxDesktopIntegrationStatus.fromMap(response);
+  }
+
+  static Future<String> setLinuxAutostartEnabled(bool enabled) async {
+    if (!Platform.isLinux) return '当前平台暂不支持';
+    final response = await _invokeLinuxDesktopCommand(
+      'setAutostartEnabled',
+      payload: <String, dynamic>{
+        'enable': enabled,
+        'execPath': '/opt/xstream/xstream',
+      },
+    );
+    return (response['message'] as String?) ??
+        ((response['ok'] == true) ? 'success' : '操作失败');
+  }
+
+  static Future<bool> isLinuxAutostartEnabled() async {
+    if (!Platform.isLinux) return false;
+    final response = await _invokeLinuxDesktopCommand('isAutostartEnabled');
+    return response['autostartEnabled'] == true;
+  }
+
+  static Future<String> ensureLinuxTunnelPrivileges() async {
+    if (!Platform.isLinux) return '当前平台暂不支持';
+    final response = await _invokeLinuxDesktopCommand('ensureTunnelPrivileges');
+    return (response['message'] as String?) ??
+        ((response['ok'] == true) ? 'success' : '操作失败');
+  }
+
+  static Future<void> _notifyLinuxDesktop(String title, String body) async {
+    if (!Platform.isLinux) {
+      return;
+    }
+    await _invokeLinuxDesktopCommand(
+      'notify',
+      payload: <String, dynamic>{'title': title, 'body': body},
+    );
   }
 
   static BridgeBindings get _ffi {
@@ -314,6 +402,18 @@ class NativeBridge {
     // ── Linux: FFI → startXray with TUN inbound (xray-core tun2socks) ────
     if (Platform.isLinux) {
       try {
+        final privilegeMessage = await ensureLinuxTunnelPrivileges();
+        if (!privilegeMessage.toLowerCase().contains('ready') &&
+            !privilegeMessage.toLowerCase().contains('success')) {
+          return '启动失败: $privilegeMessage';
+        }
+        final helperResult = await _invokeLinuxDesktopCommand(
+          'startTunnelHelper',
+          payload: <String, dynamic>{'mode': 'tun'},
+        );
+        if (helperResult['ok'] != true) {
+          return '启动失败: ${(helperResult['message'] as String?) ?? 'tunnel helper failed'}';
+        }
         await _stopOtherRunningNodes(nodeName);
         final configJson = await File(runtimeConfigPath).readAsString();
         if (_useFfi) {
@@ -322,9 +422,18 @@ class NativeBridge {
           final result = resPtr.cast<Utf8>().toDartString();
           _ffi.freeCString(resPtr);
           malloc.free(configPtr);
-          return result.toLowerCase().startsWith('success')
-              ? 'TUN 模式启动成功 ($nodeName)'
-              : '启动失败: $result';
+          if (result.toLowerCase().startsWith('success')) {
+            await _notifyLinuxDesktop(
+              'Xstream',
+              'Tunnel Mode connected: $nodeName',
+            );
+            return 'TUN 模式启动成功 ($nodeName)';
+          }
+          await _invokeLinuxDesktopCommand(
+            'stopTunnelHelper',
+            payload: <String, dynamic>{'mode': 'tun'},
+          );
+          return '启动失败: $result';
         }
         return '启动失败: FFI 不可用';
       } catch (e) {
@@ -362,6 +471,13 @@ class NativeBridge {
           final resPtr = _ffi.stopXray();
           final result = resPtr.cast<Utf8>().toDartString();
           _ffi.freeCString(resPtr);
+          if (Platform.isLinux) {
+            await _invokeLinuxDesktopCommand(
+              'stopTunnelHelper',
+              payload: <String, dynamic>{'mode': 'tun'},
+            );
+            await _notifyLinuxDesktop('Xstream', 'Tunnel Mode disconnected');
+          }
           return result.toLowerCase().startsWith('success')
               ? 'TUN 模式已停止'
               : '停止失败: $result';
@@ -446,6 +562,10 @@ class NativeBridge {
       final result = resPtr.cast<Utf8>().toDartString();
       _ffi.freeCString(resPtr);
       malloc.free(namePtr);
+      if (Platform.isLinux && result.toLowerCase().startsWith('success')) {
+        await _invokeLinuxDesktopCommand('setSystemProxy');
+        await _notifyLinuxDesktop('Xstream', 'Proxy Mode connected: $nodeName');
+      }
       return result;
     } else {
       try {
@@ -495,6 +615,10 @@ class NativeBridge {
       final result = resPtr.cast<Utf8>().toDartString();
       _ffi.freeCString(resPtr);
       malloc.free(namePtr);
+      if (Platform.isLinux && result.toLowerCase().startsWith('success')) {
+        await _invokeLinuxDesktopCommand('clearSystemProxy');
+        await _notifyLinuxDesktop('Xstream', 'Proxy Mode disconnected');
+      }
       return result;
     } else {
       try {
@@ -644,8 +768,15 @@ class NativeBridge {
     }
   }
 
-  /// Enable or disable system SOCKS proxy on macOS
+  /// Enable or disable system proxy on desktop platforms.
   static Future<String> setSystemProxy(bool enable, String password) async {
+    if (Platform.isLinux) {
+      final response = await _invokeLinuxDesktopCommand(
+        enable ? 'setSystemProxy' : 'clearSystemProxy',
+      );
+      return (response['message'] as String?) ??
+          ((response['ok'] == true) ? 'success' : '操作失败');
+    }
     if (!Platform.isMacOS) return '当前平台暂不支持';
     try {
       final result = await _channel.invokeMethod<String>('setSystemProxy', {
@@ -1375,6 +1506,29 @@ class NativeBridge {
     final result = resPtr.cast<Utf8>().toDartString();
     _ffi.freeCString(resPtr);
     return result;
+  }
+}
+
+class LinuxDesktopIntegrationStatus {
+  final String desktopEnvironment;
+  final bool autostartEnabled;
+  final bool privilegeReady;
+  final String? message;
+
+  const LinuxDesktopIntegrationStatus({
+    required this.desktopEnvironment,
+    required this.autostartEnabled,
+    required this.privilegeReady,
+    this.message,
+  });
+
+  factory LinuxDesktopIntegrationStatus.fromMap(Map<String, dynamic> map) {
+    return LinuxDesktopIntegrationStatus(
+      desktopEnvironment: (map['desktopEnvironment'] as String?) ?? 'unknown',
+      autostartEnabled: map['autostartEnabled'] == true,
+      privilegeReady: map['privilegeReady'] == true,
+      message: map['message'] as String?,
+    );
   }
 }
 

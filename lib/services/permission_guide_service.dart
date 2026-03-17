@@ -44,8 +44,13 @@ class PermissionGuideService {
   static Future<bool> shouldPromptForPacketTunnelAuthorization({
     String? failureMessage,
   }) async {
-    if (!Platform.isMacOS && !Platform.isAndroid) {
+    if (!Platform.isMacOS && !Platform.isAndroid && !Platform.isLinux) {
       return false;
+    }
+    if (Platform.isLinux) {
+      return looksLikePacketTunnelPermissionDenied(failureMessage) ||
+          (failureMessage ?? '').toLowerCase().contains('pkexec') ||
+          (failureMessage ?? '').toLowerCase().contains('helper');
     }
     if (looksLikePacketTunnelPermissionDenied(failureMessage)) {
       return true;
@@ -112,6 +117,30 @@ class PermissionGuideService {
   }
 
   static Future<PermissionCheckItem> _checkPacketTunnelPermission() async {
+    if (Platform.isLinux) {
+      try {
+        final status = await NativeBridge.getLinuxDesktopIntegrationStatus();
+        final detail =
+            'Desktop=${status.desktopEnvironment}, privilegeReady=${status.privilegeReady}';
+        return PermissionCheckItem(
+          id: 'packet_tunnel',
+          passed: status.privilegeReady,
+          detail: detail,
+          suggestion: status.privilegeReady
+              ? ''
+              : 'Install xstream-net-helper with the Linux package and ensure pkexec/polkit are available in the desktop session.',
+        );
+      } catch (e) {
+        return PermissionCheckItem(
+          id: 'packet_tunnel',
+          passed: false,
+          detail: 'Linux tunnel privilege check failed: $e',
+          suggestion:
+            'Install the desktop package, then verify pkexec and the xstream-net-helper helper are present.',
+        );
+      }
+    }
+
     if (!Platform.isMacOS && !Platform.isIOS && !Platform.isAndroid) {
       return const PermissionCheckItem(
         id: 'packet_tunnel',
@@ -186,6 +215,28 @@ class PermissionGuideService {
   }
 
   static Future<PermissionCheckItem> _checkLaunchAgentReadiness() async {
+    if (Platform.isLinux) {
+      try {
+        final enabled = await NativeBridge.isLinuxAutostartEnabled();
+        return PermissionCheckItem(
+          id: 'launch_agent',
+          passed: true,
+          detail: enabled
+              ? 'Autostart desktop file is enabled.'
+              : 'Autostart desktop file is currently disabled.',
+          suggestion: '',
+        );
+      } catch (e) {
+        return PermissionCheckItem(
+          id: 'launch_agent',
+          passed: false,
+          detail: 'Linux autostart check failed: $e',
+          suggestion:
+              'Check write access to ~/.config/autostart and retry from a normal desktop session.',
+        );
+      }
+    }
+
     if (!Platform.isMacOS) {
       return const PermissionCheckItem(
         id: 'launch_agent',
@@ -234,6 +285,31 @@ class PermissionGuideService {
   }
 
   static Future<PermissionCheckItem> _checkNetworkQueryCapability() async {
+    if (Platform.isLinux) {
+      try {
+        final status = await NativeBridge.getLinuxDesktopIntegrationStatus();
+        final supported =
+            status.desktopEnvironment == 'gnome' ||
+            status.desktopEnvironment == 'kde';
+        return PermissionCheckItem(
+          id: 'network_query',
+          passed: supported,
+          detail: 'Linux desktop environment: ${status.desktopEnvironment}.',
+          suggestion: supported
+              ? ''
+              : 'GNOME or KDE desktop integration is required for system proxy management.',
+        );
+      } catch (e) {
+        return PermissionCheckItem(
+          id: 'network_query',
+          passed: false,
+          detail: 'Linux desktop integration status failed: $e',
+          suggestion:
+              'Run the app inside a GNOME or KDE desktop session and retry.',
+        );
+      }
+    }
+
     if (!Platform.isMacOS) {
       return const PermissionCheckItem(
         id: 'network_query',

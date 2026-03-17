@@ -53,8 +53,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Timer? _latencyTimer;
   Duration _connectedDuration = Duration.zero;
   String _connectedLocation = '-';
-  PacketTunnelStatus _packetTunnelStatus =
-      const PacketTunnelStatus(status: 'unknown', utunInterfaces: []);
+  PacketTunnelStatus _packetTunnelStatus = const PacketTunnelStatus(
+    status: 'unknown',
+    utunInterfaces: [],
+  );
   PacketTunnelMetricsSnapshot _packetTunnelMetrics =
       const PacketTunnelMetricsSnapshot();
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
@@ -170,7 +172,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   bool get _requiresPacketTunnelStatus =>
-      Platform.isIOS || (Platform.isMacOS && NativeBridge.isTunMode);
+      Platform.isAndroid ||
+      Platform.isIOS ||
+      (Platform.isMacOS && NativeBridge.isTunMode);
 
   bool get _packetTunnelExplicitlyUnavailable =>
       _packetTunnelStatus.status == 'disconnected' ||
@@ -186,6 +190,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _shouldPollMetrics =>
       _appLifecycleState == AppLifecycleState.resumed &&
       _activeNode.isNotEmpty &&
+      !Platform.isAndroid &&
       !_packetTunnelExplicitlyUnavailable;
 
   bool get _shouldPollLatency {
@@ -231,12 +236,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _clearMonitoringData({required bool clearLatency}) {
     final activeNode = _activeNode.trim();
-    final hadMetrics = _packetTunnelMetrics.updatedAt != null ||
+    final hadMetrics =
+        _packetTunnelMetrics.updatedAt != null ||
         _packetTunnelMetrics.downloadBytesPerSecond != null ||
         _packetTunnelMetrics.uploadBytesPerSecond != null ||
         _packetTunnelMetrics.memoryBytes != null ||
         _packetTunnelMetrics.cpuPercent != null;
-    final hadLatency = clearLatency &&
+    final hadLatency =
+        clearLatency &&
         activeNode.isNotEmpty &&
         _latencyByNode.containsKey(activeNode);
     if (!hadMetrics && !hadLatency) {
@@ -264,7 +271,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     final status = await NativeBridge.getPacketTunnelStatus();
     if (!mounted) return;
-    final changed = status.status != _packetTunnelStatus.status ||
+    final changed =
+        status.status != _packetTunnelStatus.status ||
         status.lastError != _packetTunnelStatus.lastError ||
         status.startedAt != _packetTunnelStatus.startedAt ||
         status.utunInterfaces.join(',') !=
@@ -282,6 +290,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
       }
     });
+    _syncConnectedMeta();
     _updateMonitoringState();
   }
 
@@ -296,10 +305,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     _connectedAt ??= DateTime.now();
     final node = vpnNodes.cast<VpnNode?>().firstWhere(
-          (n) => n?.name == _activeNode,
-          orElse: () => null,
-        );
+      (n) => n?.name == _activeNode,
+      orElse: () => null,
+    );
     _connectedLocation = (node?.countryCode ?? '-').toUpperCase();
+    if (_requiresPacketTunnelStatus &&
+        _packetTunnelStatus.status != 'connected') {
+      _connectedAt = null;
+      _connectedDuration = Duration.zero;
+      _durationTimer?.cancel();
+      _durationTimer = null;
+      return;
+    }
     _durationTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || _connectedAt == null) return;
       setState(() {
@@ -341,10 +358,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final previous = _packetTunnelMetrics;
     final changed =
         previous.downloadBytesPerSecond != snapshot.downloadBytesPerSecond ||
-            previous.uploadBytesPerSecond != snapshot.uploadBytesPerSecond ||
-            previous.memoryBytes != snapshot.memoryBytes ||
-            previous.cpuPercent != snapshot.cpuPercent ||
-            previous.updatedAt != snapshot.updatedAt;
+        previous.uploadBytesPerSecond != snapshot.uploadBytesPerSecond ||
+        previous.memoryBytes != snapshot.memoryBytes ||
+        previous.cpuPercent != snapshot.cpuPercent ||
+        previous.updatedAt != snapshot.updatedAt;
     if (!changed) return;
     setState(() {
       _packetTunnelMetrics = snapshot;
@@ -417,13 +434,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
     try {
       final watch = Stopwatch()..start();
-      final request = await client.headUrl(uri).timeout(
-            const Duration(seconds: 4),
-          );
+      final request = await client
+          .headUrl(uri)
+          .timeout(const Duration(seconds: 4));
       request.followRedirects = false;
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
-      final response =
-          await request.close().timeout(const Duration(seconds: 4));
+      final response = await request.close().timeout(
+        const Duration(seconds: 4),
+      );
       await response.drain<void>();
       watch.stop();
       if (response.statusCode >= 200 && response.statusCode < 500) {
@@ -432,13 +450,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {
       try {
         final watch = Stopwatch()..start();
-        final request =
-            await client.getUrl(uri).timeout(const Duration(seconds: 4));
+        final request = await client
+            .getUrl(uri)
+            .timeout(const Duration(seconds: 4));
         request.followRedirects = false;
         request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
         request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
-        final response =
-            await request.close().timeout(const Duration(seconds: 4));
+        final response = await request.close().timeout(
+          const Duration(seconds: 4),
+        );
         await response.drain<void>();
         watch.stop();
         if (response.statusCode >= 200 && response.statusCode < 500) {
@@ -558,7 +578,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // Determine if start succeeded
       final startOk = useTunMode
-          ? !msg.contains('失败')
+          ? NativeBridge.isTunnelStartAcceptedMessage(msg)
           : await NativeBridge.checkNodeStatus(nodeName);
       if (!mounted) return;
       if (!startOk) {
@@ -594,10 +614,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (verifyMsg.startsWith('success:')) {
           _latencyByNode[nodeName] = elapsed;
         }
-        addAppLog('[socks5] $verifyMsg',
-            level: verifyMsg.startsWith('success:')
-                ? LogLevel.info
-                : LogLevel.error);
+        addAppLog(
+          '[socks5] $verifyMsg',
+          level: verifyMsg.startsWith('success:')
+              ? LogLevel.info
+              : LogLevel.error,
+        );
         _showMessage(verifyMsg);
       } else {
         // TUN mode: log the launch result
@@ -617,13 +639,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   ) async {
     final shouldShow =
         await PermissionGuideService.shouldPromptForPacketTunnelAuthorization(
-      failureMessage: failureMessage,
-    );
+          failureMessage: failureMessage,
+        );
     if (!mounted || !shouldShow) return;
-    await showPermissionGuideDialog(
-      context,
-      failureMessage: failureMessage,
-    );
+    await showPermissionGuideDialog(context, failureMessage: failureMessage);
   }
 
   PacketTunnelMetricsSnapshot get _visibleMetrics {
@@ -919,10 +938,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (leading != null) ...[
-          leading,
-          const SizedBox(width: 6),
-        ],
+        if (leading != null) ...[leading, const SizedBox(width: 6)],
         Flexible(
           child: RichText(
             overflow: TextOverflow.ellipsis,
@@ -1125,8 +1141,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildNodeOptionChip(
-      BuildContext context, VpnNode node) {
+  Widget _buildNodeOptionChip(BuildContext context, VpnNode node) {
     final cs = Theme.of(context).colorScheme;
     final xc = context.xColors;
     final isActive = _activeNode == node.name;
@@ -1168,8 +1183,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 : cs.outlineVariant,
       ),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      onSelected:
-          (!_isSwitchingNode) ? (_) => _selectNode(node) : null,
+      onSelected: (!_isSwitchingNode) ? (_) => _selectNode(node) : null,
     );
   }
 
@@ -1268,71 +1282,68 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildMonitoringDashboard(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildPrimaryStatusCard(context),
-      ],
+      children: [_buildPrimaryStatusCard(context)],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            return Stack(
-              children: [
-                Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 860),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildMonitoringDashboard(context),
-                          const SizedBox(height: 16),
-                          _buildNodeSummarySection(context),
-                        ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Stack(
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMonitoringDashboard(context),
+                      const SizedBox(height: 16),
+                      _buildNodeSummarySection(context),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 20,
+              bottom: 20,
+              child: FloatingActionButton.extended(
+                heroTag: 'home_connection_control',
+                backgroundColor: _hasActiveConnection
+                    ? const Color(0xFF3E8F5A)
+                    : const Color(0xFF1F2937),
+                foregroundColor: Colors.white,
+                onPressed: _isSwitchingNode ? null : _toggleFromFloatingButton,
+                icon: _isSwitchingNode
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        _hasActiveConnection
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
                       ),
-                    ),
-                  ),
+                label: Text(
+                  _isSwitchingNode
+                      ? _connectionStateLabel(context)
+                      : (_hasActiveConnection
+                            ? context.l10n.get('stopAcceleration')
+                            : context.l10n.get('startAcceleration')),
                 ),
-                Positioned(
-                  right: 20,
-                  bottom: 20,
-                  child: FloatingActionButton.extended(
-                    heroTag: 'home_connection_control',
-                    backgroundColor: _hasActiveConnection
-                        ? context.xColors.success
-                        : Theme.of(context).colorScheme.inverseSurface,
-                    foregroundColor: Theme.of(context).colorScheme.onInverseSurface,
-                    onPressed:
-                        _isSwitchingNode ? null : _toggleFromFloatingButton,
-                    icon: _isSwitchingNode
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Icon(
-                            _hasActiveConnection
-                                ? Icons.stop_rounded
-                                : Icons.play_arrow_rounded,
-                          ),
-                    label: Text(
-                      _isSwitchingNode
-                          ? _connectionStateLabel(context)
-                          : (_hasActiveConnection
-                              ? context.l10n.get('stopAcceleration')
-                              : context.l10n.get('startAcceleration')),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+              ),
+            ),
+          ],
         );
+      },
+    );
   }
 }

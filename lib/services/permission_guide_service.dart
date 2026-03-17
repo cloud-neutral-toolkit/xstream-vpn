@@ -117,6 +117,34 @@ class PermissionGuideService {
   }
 
   static Future<PermissionCheckItem> _checkPacketTunnelPermission() async {
+    if (Platform.isWindows) {
+      try {
+        final status = await NativeBridge.getPacketTunnelStatus();
+        if (status.status == 'unsupported') {
+          return const PermissionCheckItem(
+            id: 'packet_tunnel',
+            passed: false,
+            detail: 'Desktop secure tunnel runtime is unavailable.',
+            suggestion:
+                'Verify the Windows native bridge is packaged and restart the app.',
+          );
+        }
+        return PermissionCheckItem(
+          id: 'packet_tunnel',
+          passed: true,
+          detail: 'Desktop runtime status: ${status.status}',
+          suggestion: '',
+        );
+      } catch (e) {
+        return PermissionCheckItem(
+          id: 'packet_tunnel',
+          passed: false,
+          detail: 'Desktop runtime status query failed: $e',
+          suggestion: 'Check the Windows runtime bridge and restart the app.',
+        );
+      }
+    }
+
     if (Platform.isLinux) {
       try {
         final status = await NativeBridge.getLinuxDesktopIntegrationStatus();
@@ -215,6 +243,34 @@ class PermissionGuideService {
   }
 
   static Future<PermissionCheckItem> _checkLaunchAgentReadiness() async {
+    if (Platform.isWindows) {
+      try {
+        final result = await Process.run('cmd', [
+          '/c',
+          'schtasks',
+          '/Query',
+        ], runInShell: true);
+        final passed = result.exitCode == 0;
+        return PermissionCheckItem(
+          id: 'launch_agent',
+          passed: passed,
+          detail: passed
+              ? 'Task Scheduler is available for background bootstrap.'
+              : 'Task Scheduler query failed: ${result.stderr}',
+          suggestion: passed
+              ? ''
+              : 'Open Task Scheduler once and verify the current user can query scheduled tasks.',
+        );
+      } catch (e) {
+        return PermissionCheckItem(
+          id: 'launch_agent',
+          passed: false,
+          detail: 'Task Scheduler readiness check failed: $e',
+          suggestion: 'Verify Task Scheduler is available and retry.',
+        );
+      }
+    }
+
     if (Platform.isLinux) {
       try {
         final enabled = await NativeBridge.isLinuxAutostartEnabled();
@@ -285,6 +341,31 @@ class PermissionGuideService {
   }
 
   static Future<PermissionCheckItem> _checkNetworkQueryCapability() async {
+    if (Platform.isWindows) {
+      try {
+        final verifyResult = await NativeBridge.verifySocks5Proxy();
+        final passed = verifyResult.startsWith('success:');
+        return PermissionCheckItem(
+          id: 'network_query',
+          passed: passed,
+          detail: passed
+              ? 'Local desktop proxy endpoint is reachable.'
+              : verifyResult,
+          suggestion: passed
+              ? ''
+              : 'Start acceleration once, then retry this check to confirm the local proxy endpoint is listening.',
+        );
+      } catch (e) {
+        return PermissionCheckItem(
+          id: 'network_query',
+          passed: false,
+          detail: 'Desktop proxy reachability check failed: $e',
+          suggestion:
+              'Verify the local proxy/tunnel runtime is running and retry.',
+        );
+      }
+    }
+
     if (Platform.isLinux) {
       try {
         final status = await NativeBridge.getLinuxDesktopIntegrationStatus();

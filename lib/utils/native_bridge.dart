@@ -92,6 +92,7 @@ class NativeBridge {
   );
   static const _tunMetricsFallback = PacketTunnelMetricsSnapshot();
   static bool _linuxDesktopInitialized = false;
+  static const _desktopRuntimeSnapshotFallback = DesktopRuntimeSnapshot();
 
   static Future<T> _runSerializedConnectionOp<T>(Future<T> Function() action) {
     final completer = Completer<T>();
@@ -710,7 +711,7 @@ class NativeBridge {
     required String proxyMode,
     required String languageCode,
   }) async {
-    if (!Platform.isMacOS) return;
+    if (!(Platform.isMacOS || Platform.isWindows)) return;
     try {
       await _channel.invokeMethod<String>('updateMenuState', {
         'connected': connected,
@@ -792,14 +793,57 @@ class NativeBridge {
   }
 
   static Future<String> verifySocks5Proxy() async {
-    if (!Platform.isMacOS) return '当前平台暂不支持';
+    if (Platform.isMacOS) {
+      try {
+        final result = await _channel.invokeMethod<String>('verifySocks5Proxy');
+        return result ?? '验证失败: 无返回';
+      } on MissingPluginException {
+        return '插件未实现';
+      } catch (e) {
+        return '验证失败: $e';
+      }
+    }
+
+    if (_isDesktop) {
+      try {
+        final port = int.tryParse(GlobalState.socksPort.value) ?? 1080;
+        final socket = await Socket.connect(
+          InternetAddress.loopbackIPv4,
+          port,
+          timeout: const Duration(seconds: 3),
+        );
+        await socket.close();
+        return 'success: local SOCKS proxy is reachable';
+      } catch (e) {
+        return '验证失败: $e';
+      }
+    }
+
+    return '当前平台暂不支持';
+  }
+
+  static Future<DesktopRuntimeSnapshot> getDesktopRuntimeSnapshot() async {
+    if (!(Platform.isWindows || Platform.isLinux)) {
+      return _desktopRuntimeSnapshotFallback;
+    }
+    if (!_useFfi) {
+      return _desktopRuntimeSnapshotFallback;
+    }
+    final getter = _ffi.getDesktopRuntimeSnapshot;
+    if (getter == null) {
+      return _desktopRuntimeSnapshotFallback;
+    }
     try {
-      final result = await _channel.invokeMethod<String>('verifySocks5Proxy');
-      return result ?? '验证失败: 无返回';
-    } on MissingPluginException {
-      return '插件未实现';
+      final resPtr = getter();
+      final result = resPtr.cast<Utf8>().toDartString();
+      _ffi.freeCString(resPtr);
+      return DesktopRuntimeSnapshot.fromJsonString(result);
     } catch (e) {
-      return '验证失败: $e';
+      addAppLog(
+        'Desktop runtime snapshot query failed: $e',
+        level: LogLevel.error,
+      );
+      return _desktopRuntimeSnapshotFallback;
     }
   }
 
@@ -1336,6 +1380,14 @@ class NativeBridge {
       }
     }
 
+    if (Platform.isWindows || Platform.isLinux) {
+      final snapshot = await getDesktopRuntimeSnapshot();
+      return PacketTunnelStatus(
+        status: snapshot.running ? 'connected' : 'disconnected',
+        utunInterfaces: const [],
+      );
+    }
+
     if (!_isDarwin) return _tunStatusFallback;
     _ensureDarwinFlutterApiReady();
     try {
@@ -1371,6 +1423,17 @@ class NativeBridge {
   }
 
   static Future<PacketTunnelMetricsSnapshot> getPacketTunnelMetrics() async {
+    if (Platform.isWindows || Platform.isLinux) {
+      final snapshot = await getDesktopRuntimeSnapshot();
+      return PacketTunnelMetricsSnapshot(
+        downloadBytesPerSecond: snapshot.downloadBytesPerSecond,
+        uploadBytesPerSecond: snapshot.uploadBytesPerSecond,
+        memoryBytes: snapshot.memoryBytes,
+        cpuPercent: snapshot.cpuPercent,
+        updatedAt: snapshot.updatedAt,
+      );
+    }
+
     if (!_isDarwin) return _tunMetricsFallback;
     _ensureDarwinFlutterApiReady();
     try {
@@ -1584,6 +1647,48 @@ class PacketTunnelStatus {
       lastError: lastError,
       startedAt: startedAt,
     );
+  }
+}
+
+class DesktopRuntimeSnapshot {
+  final bool running;
+  final int? downloadBytesPerSecond;
+  final int? uploadBytesPerSecond;
+  final int? memoryBytes;
+  final double? cpuPercent;
+  final int? updatedAt;
+
+  const DesktopRuntimeSnapshot({
+    this.running = false,
+    this.downloadBytesPerSecond,
+    this.uploadBytesPerSecond,
+    this.memoryBytes,
+    this.cpuPercent,
+    this.updatedAt,
+  });
+
+  factory DesktopRuntimeSnapshot.fromJsonString(String jsonString) {
+    if (jsonString.trim().isEmpty) {
+      return const DesktopRuntimeSnapshot();
+    }
+
+    try {
+      final raw = jsonDecode(jsonString);
+      if (raw is! Map<String, dynamic>) {
+        return const DesktopRuntimeSnapshot();
+      }
+      return DesktopRuntimeSnapshot(
+        running: raw['running'] == true,
+        downloadBytesPerSecond: (raw['downloadBytesPerSecond'] as num?)
+            ?.toInt(),
+        uploadBytesPerSecond: (raw['uploadBytesPerSecond'] as num?)?.toInt(),
+        memoryBytes: (raw['memoryBytes'] as num?)?.toInt(),
+        cpuPercent: (raw['cpuPercent'] as num?)?.toDouble(),
+        updatedAt: (raw['updatedAt'] as num?)?.toInt(),
+      );
+    } catch (_) {
+      return const DesktopRuntimeSnapshot();
+    }
   }
 }
 

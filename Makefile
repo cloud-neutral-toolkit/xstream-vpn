@@ -53,6 +53,7 @@ endef
 	run-macos-debug fix-macos-signing sync-macos-config reset-macos-xcode-version \
 	build-windows build-windows-x64 build-windows-icon \
 	build-linux build-linux-x64 build-linux-arm64 package-linux-deb package-linux-rpm package-linux-all \
+	build-windows-single-file \
 	build-ios build-ios-app build-ios-ipa install-ios-debug install-ios-release deploy-ios-device \
 	build-android build-android-apk build-android-libxray \
 	mcp mcp-bootstrap mcp-doctor mcp-install mcp-start-dev mcp-start-runtime
@@ -79,6 +80,7 @@ help:
 		'Windows' \
 		'  build-windows             Build all Windows targets supported on the host' \
 		'  build-windows-x64         Build the Windows x64 release bundle on native Windows' \
+		'  build-windows-single-file Build a single-file Windows launcher that self-extracts the runtime' \
 		'  build-windows-icon        Regenerate the Windows .ico asset' \
 		'' \
 		'Linux' \
@@ -154,6 +156,9 @@ build-windows:
 
 build-windows-x64:
 	$(call run_target,$(WINDOWS_ENV),windows-x64)
+
+build-windows-single-file:
+	$(call run_target,$(WINDOWS_ENV),windows-single-file)
 
 build-windows-icon:
 	$(call run_target,$(COMMON_ENV),windows-icon)

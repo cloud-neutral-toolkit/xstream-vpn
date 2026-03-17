@@ -20,6 +20,7 @@ import 'services/telemetry/telemetry_service.dart';
 import 'services/vpn_config_service.dart';
 import 'services/global_proxy_service.dart';
 import 'services/permission_guide_service.dart';
+import 'services/desktop/desktop_platform_capabilities.dart';
 import 'services/sync/desktop_sync_service.dart';
 import 'services/tun_settings_service.dart';
 import 'widgets/permission_guide_dialog.dart';
@@ -107,6 +108,9 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   static const double _mobileBreakpoint = 900;
   int _currentIndex = 0;
+
+  DesktopPlatformCapabilities get _desktopCapabilities =>
+      DesktopPlatformCapabilities.current;
 
   bool _isMobileLayout(BuildContext context) {
     final isPhonePlatform = Platform.isIOS || Platform.isAndroid;
@@ -428,7 +432,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   }
 
   Future<void> _syncNativeMenuState() async {
-    if (!Platform.isMacOS) return;
+    if (!_desktopCapabilities.supportsNativeTrayMenu) return;
     final nodeName = GlobalState.activeNodeName.value.trim();
     final connected = nodeName.isNotEmpty;
     final mode = GlobalState.isTunnelMode ? 'tun' : 'proxyOnly';

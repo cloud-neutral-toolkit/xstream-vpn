@@ -7,6 +7,7 @@ import '../../utils/global_config.dart' show GlobalState;
 import '../../utils/app_logger.dart';
 import '../l10n/app_localizations.dart';
 import '../../services/permission_guide_service.dart';
+import '../../services/desktop/desktop_platform_capabilities.dart';
 import '../../services/vpn_config_service.dart';
 import '../widgets/permission_guide_dialog.dart';
 import '../widgets/log_console.dart' show LogLevel;
@@ -171,10 +172,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  DesktopPlatformCapabilities get _desktopCapabilities =>
+      DesktopPlatformCapabilities.current;
+
   bool get _requiresPacketTunnelStatus =>
       Platform.isAndroid ||
       Platform.isIOS ||
-      (Platform.isMacOS && NativeBridge.isTunMode);
+      (Platform.isMacOS && NativeBridge.isTunMode) ||
+      (_desktopCapabilities.supportsUnifiedTunnelStatus &&
+          Platform.isWindows &&
+          NativeBridge.isTunMode);
 
   bool get _packetTunnelExplicitlyUnavailable =>
       _packetTunnelStatus.status == 'disconnected' ||
@@ -191,7 +198,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _appLifecycleState == AppLifecycleState.resumed &&
       _activeNode.isNotEmpty &&
       !Platform.isAndroid &&
-      !_packetTunnelExplicitlyUnavailable;
+      ((_requiresPacketTunnelStatus && !_packetTunnelExplicitlyUnavailable) ||
+          (!_requiresPacketTunnelStatus &&
+              _desktopCapabilities.supportsRuntimeMetrics));
 
   bool get _shouldPollLatency {
     if (_appLifecycleState != AppLifecycleState.resumed ||
@@ -400,7 +409,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<int?> _probeActiveConnectionLatency() async {
-    if (Platform.isMacOS && !NativeBridge.isTunMode) {
+    if (_desktopCapabilities.usesLocalProxyLatencyProbe &&
+        !NativeBridge.isTunMode) {
       final watch = Stopwatch()..start();
       final result = await NativeBridge.verifySocks5Proxy();
       watch.stop();
@@ -649,8 +659,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final updatedAt = _packetTunnelMetrics.updatedAt;
     if (_activeNode.isEmpty ||
         updatedAt == null ||
-        !_requiresPacketTunnelStatus ||
-        _packetTunnelExplicitlyUnavailable) {
+        (_requiresPacketTunnelStatus && _packetTunnelExplicitlyUnavailable) ||
+        (!_requiresPacketTunnelStatus &&
+            !_desktopCapabilities.supportsRuntimeMetrics)) {
       return const PacketTunnelMetricsSnapshot();
     }
     final age = DateTime.now().millisecondsSinceEpoch - updatedAt;

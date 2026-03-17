@@ -1,9 +1,11 @@
 .DEFAULT_GOAL := help
 
 FLUTTER ?= flutter
+POD ?= pod
 IOS_DEVICE ?=
 IOS_NO_RESIDENT ?= 0
 MCP_MODE ?= dev
+XCODE_DERIVED_DATA ?= $(HOME)/Library/Developer/Xcode/DerivedData
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
@@ -48,7 +50,7 @@ endef
 	help clean icon \
 	build-all build-desktop build-mobile \
 	build-macos build-macos-x64 build-macos-arm64 \
-	run-macos-debug fix-macos-signing sync-macos-config \
+	run-macos-debug fix-macos-signing sync-macos-config reset-macos-xcode-version \
 	build-windows build-windows-x64 build-windows-icon \
 	build-linux build-linux-x64 build-linux-arm64 \
 	build-ios build-ios-app build-ios-ipa install-ios-debug install-ios-release deploy-ios-device \
@@ -72,6 +74,7 @@ help:
 		'  run-macos-debug           Launch the macOS app in Flutter debug mode' \
 		'  fix-macos-signing         Reset macOS signing-related state before a fresh build' \
 		'  sync-macos-config         Sync pubspec.yaml version → Generated.xcconfig (run before Xcode Archive)' \
+		'  reset-macos-xcode-version Clean Flutter/Xcode caches, resync version config, and reinstall macOS pods' \
 		'' \
 		'Windows' \
 		'  build-windows             Build all Windows targets supported on the host' \
@@ -132,6 +135,16 @@ fix-macos-signing:
 
 sync-macos-config:
 	$(call run_target,FLUTTER="$(FLUTTER)",sync-macos-config)
+
+reset-macos-xcode-version:
+	"$(FLUTTER)" clean
+	rm -rf macos/Flutter/generated
+	rm -rf macos/Flutter/ephemeral
+	rm -rf ios/Flutter/ephemeral
+	rm -rf "$(XCODE_DERIVED_DATA)"/*
+	"$(FLUTTER)" pub get
+	@$(MAKE) sync-macos-config
+	"$(POD)" install --project-directory=macos
 
 build-windows:
 	@$(MAKE) 'build-windows-x64'

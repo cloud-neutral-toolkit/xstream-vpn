@@ -38,7 +38,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: 3.27.4
+  FLUTTER_VERSION: 3.41.4
   XSTREAM_APPLE_TEAM_ID: N3G9T67W78
   XSTREAM_APP_GROUP_ID: group.plus.svc.xstream
   XSTREAM_IOS_BUNDLE_ID: plus.svc.xstream
@@ -47,48 +47,46 @@ env:
   XSTREAM_MACOS_PACKET_TUNNEL_BUNDLE_ID: plus.svc.xstream.PacketTunnel
 
 jobs:
-  clean-daily-tags:
-    if: ${{ github.event_name == 'schedule' }}
-    runs-on: ubuntu-latest
+  prepare-release:
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - name: Clean old daily tags
-        shell: bash
-        run: bash ./scripts/clean_old_tags.sh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  code-analysis:
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          submodules: recursive
-      - name: Set up Flutter SDK
-        uses: ./.github/actions/setup-flutter-sdk
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-      - name: Install analysis dependencies
-        shell: bash
-        run: bash ./scripts/ci/setup_platform_deps.sh linux
-      - name: Run code analysis
-        shell: bash
-        run: bash ./scripts/ci/run_code_analysis.sh
-
-  prepare-release:
-    if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
-    runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       release_title: ${{ steps.meta.outputs.release_title }}
       release_notes: ${{ steps.meta.outputs.release_notes }}
     steps:
+      - name: Checkout source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Clean old daily tags
+        if: ${{ github.event_name == 'schedule' }}
+        shell: bash
+        run: bash ./scripts/clean_old_tags.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Flutter SDK
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+        uses: ./.github/actions/setup-flutter-sdk
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install analysis dependencies
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: bash ./scripts/ci/setup_platform_deps.sh linux
+
+      - name: Run code analysis
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        run: bash ./scripts/ci/run_code_analysis.sh
+
       - name: Compute release metadata
+        if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
         id: meta
         shell: bash
         run: bash ./scripts/ci/compute_release_metadata.sh

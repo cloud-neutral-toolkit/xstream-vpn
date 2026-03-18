@@ -5,6 +5,49 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GO_CORE_DIR="$ROOT_DIR/go_core"
 JNI_LIBS_DIR="$ROOT_DIR/android/app/src/main/jniLibs"
 LIBXRAY_DIR="$ROOT_DIR/libXray"
+UNAME_S="${UNAME_S:-$(uname -s)}"
+UNAME_M="${UNAME_M:-$(uname -m)}"
+GO_BIN="${GO_BIN:-go}"
+
+normalize_exec_path() {
+  local value="$1"
+  if [[ -z "$value" || "$value" == "go" ]]; then
+    printf '%s' "$value"
+    return 0
+  fi
+
+  if command -v cygpath >/dev/null 2>&1 && [[ "$value" =~ ^[A-Za-z]:[\\/].* ]]; then
+    cygpath -u "$value"
+    return 0
+  fi
+
+  printf '%s' "$value"
+}
+
+normalize_path() {
+  local value="$1"
+  value="${value//$'\r'/}"
+  value="${value//\\:/:}"
+  value="${value//\\=/=}"
+  value="${value//\\//}"
+  printf '%s' "$value"
+}
+
+to_host_path() {
+  local value="$1"
+  case "$UNAME_S" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)
+      if command -v cygpath >/dev/null 2>&1; then
+        cygpath -aw "$value"
+        return 0
+      fi
+      ;;
+  esac
+
+  printf '%s' "$value"
+}
+
+GO_BIN="$(normalize_exec_path "$GO_BIN")"
 
 if [[ ! -d "$LIBXRAY_DIR" || ! -f "$LIBXRAY_DIR/go.mod" ]]; then
   echo "libXray submodule is missing. Run:"
@@ -17,18 +60,19 @@ resolve_android_sdk_root() {
   local candidates=()
 
   if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
-    candidates+=("${ANDROID_SDK_ROOT}")
+    candidates+=("$(normalize_path "${ANDROID_SDK_ROOT}")")
   fi
   if [[ -n "${ANDROID_HOME:-}" ]]; then
-    candidates+=("${ANDROID_HOME}")
+    candidates+=("$(normalize_path "${ANDROID_HOME}")")
+  fi
+  if [[ -n "${LOCALAPPDATA:-}" ]]; then
+    candidates+=("$(normalize_path "${LOCALAPPDATA}")/Android/Sdk")
   fi
 
   if [[ -f "$local_props" ]]; then
     local raw_sdk_dir
     raw_sdk_dir="$(grep '^sdk.dir=' "$local_props" | head -n1 | cut -d'=' -f2- || true)"
-    raw_sdk_dir="${raw_sdk_dir//\\:/:}"
-    raw_sdk_dir="${raw_sdk_dir//\\=/=}"
-    raw_sdk_dir="${raw_sdk_dir//$'\r'/}"
+    raw_sdk_dir="$(normalize_path "$raw_sdk_dir")"
     if [[ -n "$raw_sdk_dir" ]]; then
       candidates+=("$raw_sdk_dir")
     fi
@@ -68,21 +112,24 @@ fi
 HOST_TAG=""
 case "$(uname -s)" in
   Darwin)
-    if [[ "$(uname -m)" == "arm64" ]]; then
+    if [[ "$UNAME_M" == "arm64" ]]; then
       HOST_TAG="darwin-arm64"
     else
       HOST_TAG="darwin-x86_64"
     fi
     ;;
   Linux)
-    if [[ "$(uname -m)" == "aarch64" ]]; then
+    if [[ "$UNAME_M" == "aarch64" ]]; then
       HOST_TAG="linux-arm64"
     else
       HOST_TAG="linux-x86_64"
     fi
     ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+    HOST_TAG="windows-x86_64"
+    ;;
   *)
-    echo "Unsupported host OS: $(uname -s)"
+    echo "Unsupported host OS: $UNAME_S"
     exit 1
     ;;
 esac
@@ -99,6 +146,11 @@ build_one() {
   local clang="$3"
   local goarm="${4:-}"
   local outdir="$JNI_LIBS_DIR/$abi"
+  local cc_path="$TOOLCHAIN_BIN/$clang"
+
+  if [[ "$HOST_TAG" == "windows-x86_64" && -f "${cc_path}.cmd" ]]; then
+    cc_path="${cc_path}.cmd"
+  fi
 
   mkdir -p "$outdir"
   echo ">>> Building $abi ..."
@@ -108,13 +160,13 @@ build_one() {
     export CGO_ENABLED=1
     export GOOS=android
     export GOARCH="$goarch"
-    export CC="$TOOLCHAIN_BIN/$clang"
+    export CC="$(to_host_path "$cc_path")"
     if [[ -n "$goarm" ]]; then
       export GOARM="$goarm"
     else
       unset GOARM || true
     fi
-    go build -trimpath -buildmode=c-shared \
+    "$GO_BIN" build -trimpath -buildmode=c-shared \
       -o "$outdir/libgo_native_bridge.so" \
       ./bridge_android.go
   )

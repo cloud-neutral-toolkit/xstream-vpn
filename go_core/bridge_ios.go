@@ -296,7 +296,4 @@ func PerformAction(action, password *C.char) *C.char {
 //export IsXrayDownloading
 func IsXrayDownloading() C.int { return 0 }
 
-//export FreeCString
-func FreeCString(str *C.char) { C.free(unsafe.Pointer(str)) }
-
 func main() {}

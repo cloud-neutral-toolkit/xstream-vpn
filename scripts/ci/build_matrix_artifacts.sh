@@ -25,6 +25,7 @@ case "$platform" in
     pwsh -File ./build_scripts/package_windows_msi.ps1
     ;;
   macos)
+    rm -rf build/.macos-build.lock
     make "build-macos-${arch}"
     ;;
   android)

@@ -38,6 +38,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FLUTTER_VERSION: 3.41.4
   XSTREAM_APPLE_TEAM_ID: N3G9T67W78
   XSTREAM_APP_GROUP_ID: group.plus.svc.xstream
   XSTREAM_IOS_BUNDLE_ID: plus.svc.xstream
@@ -72,10 +73,10 @@ jobs:
         run: |
           case "${RUNNER_OS}" in
             Linux)
-              archive="stable/linux/flutter_linux_3.24.3-stable.tar.xz"
+              archive="stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
               ;;
             macOS)
-              archive="stable/macos/flutter_macos_arm64_3.24.3-stable.zip"
+              archive="stable/macos/flutter_macos_${FLUTTER_VERSION}-stable.zip"
               ;;
             *)
               echo "Unsupported runner OS: ${RUNNER_OS}" >&2
@@ -108,7 +109,7 @@ jobs:
           New-Item -ItemType Directory -Path $installRoot | Out-Null
 
           $archive = Join-Path $installRoot "flutter-sdk.zip"
-          Invoke-WebRequest -Uri "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.24.3-stable.zip" -OutFile $archive
+          Invoke-WebRequest -Uri "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${env:FLUTTER_VERSION}-stable.zip" -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $installRoot -Force
 
           "$installRoot\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -192,10 +193,10 @@ jobs:
         run: |
           case "${RUNNER_OS}" in
             Linux)
-              archive="stable/linux/flutter_linux_3.24.3-stable.tar.xz"
+              archive="stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"
               ;;
             macOS)
-              archive="stable/macos/flutter_macos_arm64_3.24.3-stable.zip"
+              archive="stable/macos/flutter_macos_${FLUTTER_VERSION}-stable.zip"
               ;;
             *)
               echo "Unsupported runner OS: ${RUNNER_OS}" >&2
@@ -228,7 +229,7 @@ jobs:
           New-Item -ItemType Directory -Path $installRoot | Out-Null
 
           $archive = Join-Path $installRoot "flutter-sdk.zip"
-          Invoke-WebRequest -Uri "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.24.3-stable.zip" -OutFile $archive
+          Invoke-WebRequest -Uri "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${env:FLUTTER_VERSION}-stable.zip" -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $installRoot -Force
 
           "$installRoot\flutter\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append

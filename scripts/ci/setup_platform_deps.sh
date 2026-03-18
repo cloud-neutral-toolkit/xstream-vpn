@@ -46,7 +46,9 @@ case "$platform" in
       exit 1
     fi
 
+    set +o pipefail
     yes | "$sdkmanager" --licenses >/dev/null
+    set -o pipefail
     "$sdkmanager" "ndk;27.1.12297006"
 
     flutter_bin="$(command -v flutter)"

@@ -204,7 +204,7 @@ foreach ($file in $files) {
     $componentRefs.Add("      <ComponentRef Id=`"$componentId`" />") | Out-Null
 }
 
-$directories = $directorySet.ToArray() | Sort-Object
+$directories = @($directorySet) | Sort-Object
 $childrenByDirectory = @{}
 foreach ($directory in $directories) {
     if ([string]::IsNullOrEmpty($directory)) {

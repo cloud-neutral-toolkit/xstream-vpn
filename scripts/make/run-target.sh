@@ -41,77 +41,82 @@ run_macos_build() {
 
   echo "Building for macOS (${human_arch})..."
 
-  if [[ "$(id -u)" == "0" ]]; then
-    if [[ "${XSTREAM_SUDO_DELEGATED:-0}" == "1" ]]; then
-      echo "❌ Failed to switch from root to regular user. Please run build as a regular user shell."
-      return 1
-    fi
-    if [[ -z "${SUDO_USER:-}" ]]; then
-      echo "❌ Root shell detected without SUDO_USER. Please run: sudo make ${make_target} (from a regular user)."
-      return 1
-    fi
+  if [[ "${XSTREAM_SKIP_MACOS_BUILD_LOCK:-0}" == "1" ]]; then
+    echo "Skipping macOS build lock for CI execution."
+  else
 
-    echo "↪ Detected sudo mode. Switching build to user: ${SUDO_USER}"
-    for path in macos/Flutter/ephemeral ios/Flutter/ephemeral linux/flutter/ephemeral windows/flutter/ephemeral .dart_tool build; do
-      if [[ -e "$path" ]]; then
-        chown -R "$SUDO_USER" "$path" || true
-      fi
-    done
-
-    exec sudo -H -u "$SUDO_USER" env \
-      XSTREAM_SUDO_DELEGATED=1 \
-      PATH="$PATH" \
-      FLUTTER="$flutter_bin" \
-      UNAME_S="$uname_s" \
-      UNAME_M="$uname_m" \
-      BRANCH="$branch" \
-      BUILD_ID="$build_id" \
-      BUILD_DATE="$build_date" \
-      DMG_NAME="$dmg_name" \
-      MACOS_APP_BUNDLE="$macos_app_bundle" \
-      MACOS_BUILD_LOCK_DIR="$macos_build_lock_dir" \
-      MACOS_BUILD_LOCK_PID_FILE="$macos_build_lock_pid_file" \
-      "$0" "$make_target"
-  fi
-
-  if ! mkdir "$macos_build_lock_dir" 2>/dev/null; then
-    local lock_pid=""
-    local stale_lock=0
-
-    if [[ -f "$macos_build_lock_pid_file" ]]; then
-      lock_pid="$(cat "$macos_build_lock_pid_file" 2>/dev/null || true)"
-      if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
-        stale_lock=1
-      fi
-    else
-      stale_lock=1
-    fi
-
-    if [[ "$stale_lock" == "1" ]]; then
-      echo "⚠️ Detected stale macOS build lock. Auto-cleaning: ${macos_build_lock_dir}"
-      # Use recursive cleanup to handle unexpected leftover files in lock dir.
-      rm -rf "$macos_build_lock_dir" >/dev/null 2>&1 || true
-      if ! mkdir "$macos_build_lock_dir" 2>/dev/null; then
-        echo "❌ Another macOS build is already running (lock: ${macos_build_lock_dir})."
-        if [[ -e "$macos_build_lock_dir" && ! -w "$macos_build_lock_dir" ]]; then
-          echo "   Lock exists but is not writable by current user: $(id -un)"
-          echo "   Fix permissions, then retry."
-        fi
-        echo "   Wait for it to finish, then retry."
+    if [[ "$(id -u)" == "0" ]]; then
+      if [[ "${XSTREAM_SUDO_DELEGATED:-0}" == "1" ]]; then
+        echo "❌ Failed to switch from root to regular user. Please run build as a regular user shell."
         return 1
       fi
-    else
-      echo "❌ Another macOS build is already running (lock: ${macos_build_lock_dir})."
-      if [[ -n "$lock_pid" ]]; then
-        echo "   Active build PID: ${lock_pid}"
+      if [[ -z "${SUDO_USER:-}" ]]; then
+        echo "❌ Root shell detected without SUDO_USER. Please run: sudo make ${make_target} (from a regular user)."
+        return 1
       fi
-      echo "   Wait for it to finish, or remove lock after confirming no build process is active."
-      return 1
-    fi
-  fi
 
-  echo "$$" > "$macos_build_lock_pid_file"
-  trap 'rm -f "$macos_build_lock_pid_file" >/dev/null 2>&1 || true; rmdir "$macos_build_lock_dir" >/dev/null 2>&1 || true' EXIT INT TERM
+      echo "↪ Detected sudo mode. Switching build to user: ${SUDO_USER}"
+      for path in macos/Flutter/ephemeral ios/Flutter/ephemeral linux/flutter/ephemeral windows/flutter/ephemeral .dart_tool build; do
+        if [[ -e "$path" ]]; then
+          chown -R "$SUDO_USER" "$path" || true
+        fi
+      done
+
+      exec sudo -H -u "$SUDO_USER" env \
+        XSTREAM_SUDO_DELEGATED=1 \
+        PATH="$PATH" \
+        FLUTTER="$flutter_bin" \
+        UNAME_S="$uname_s" \
+        UNAME_M="$uname_m" \
+        BRANCH="$branch" \
+        BUILD_ID="$build_id" \
+        BUILD_DATE="$build_date" \
+        DMG_NAME="$dmg_name" \
+        MACOS_APP_BUNDLE="$macos_app_bundle" \
+        MACOS_BUILD_LOCK_DIR="$macos_build_lock_dir" \
+        MACOS_BUILD_LOCK_PID_FILE="$macos_build_lock_pid_file" \
+        "$0" "$make_target"
+    fi
+
+    if ! mkdir "$macos_build_lock_dir" 2>/dev/null; then
+      local lock_pid=""
+      local stale_lock=0
+
+      if [[ -f "$macos_build_lock_pid_file" ]]; then
+        lock_pid="$(cat "$macos_build_lock_pid_file" 2>/dev/null || true)"
+        if [[ -n "$lock_pid" ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+          stale_lock=1
+        fi
+      else
+        stale_lock=1
+      fi
+
+      if [[ "$stale_lock" == "1" ]]; then
+        echo "⚠️ Detected stale macOS build lock. Auto-cleaning: ${macos_build_lock_dir}"
+        # Use recursive cleanup to handle unexpected leftover files in lock dir.
+        rm -rf "$macos_build_lock_dir" >/dev/null 2>&1 || true
+        if ! mkdir "$macos_build_lock_dir" 2>/dev/null; then
+          echo "❌ Another macOS build is already running (lock: ${macos_build_lock_dir})."
+          if [[ -e "$macos_build_lock_dir" && ! -w "$macos_build_lock_dir" ]]; then
+            echo "   Lock exists but is not writable by current user: $(id -un)"
+            echo "   Fix permissions, then retry."
+          fi
+          echo "   Wait for it to finish, then retry."
+          return 1
+        fi
+      else
+        echo "❌ Another macOS build is already running (lock: ${macos_build_lock_dir})."
+        if [[ -n "$lock_pid" ]]; then
+          echo "   Active build PID: ${lock_pid}"
+        fi
+        echo "   Wait for it to finish, or remove lock after confirming no build process is active."
+        return 1
+      fi
+    fi
+
+    echo "$$" > "$macos_build_lock_pid_file"
+    trap 'rm -f "$macos_build_lock_pid_file" >/dev/null 2>&1 || true; rmdir "$macos_build_lock_dir" >/dev/null 2>&1 || true' EXIT INT TERM
+  fi
 
   if ! command -v pod >/dev/null 2>&1; then
     echo "❌ CocoaPods not installed or not in a valid state. Install with: brew install cocoapods"

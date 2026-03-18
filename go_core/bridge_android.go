@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/xtls/libxray/xray"
 	"github.com/xtls/xray-core/common/platform"

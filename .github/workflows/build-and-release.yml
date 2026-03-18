@@ -91,26 +91,7 @@ jobs:
       - name: Compute release metadata
         id: meta
         shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            release_tag="${GITHUB_REF_NAME}"
-            release_title="Release ${GITHUB_REF_NAME}"
-            release_notes="Automated release for ${GITHUB_REF_NAME}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            release_tag="manual-${GITHUB_RUN_NUMBER}"
-            release_title="Manual Build ${GITHUB_RUN_NUMBER}"
-            release_notes="Automated manual build from ${GITHUB_SHA}"
-          else
-            release_tag="nightly-${GITHUB_RUN_NUMBER}"
-            release_title="Nightly Build ${GITHUB_RUN_NUMBER}"
-            release_notes="Automated nightly build from ${GITHUB_SHA}"
-          fi
-
-          {
-            echo "release_tag=${release_tag}"
-            echo "release_title=${release_title}"
-            echo "release_notes=${release_notes}"
-          } >> "$GITHUB_OUTPUT"
+        run: bash ./scripts/ci/compute_release_metadata.sh
 
   build:
     if: ${{ github.event_name != 'schedule' }}

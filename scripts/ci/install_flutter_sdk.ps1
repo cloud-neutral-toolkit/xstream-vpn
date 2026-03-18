@@ -1,9 +1,9 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [Parameter(Mandatory = $true)]
   [string]$FlutterVersion
 )
+
+$ErrorActionPreference = "Stop"
 
 $installRoot = Join-Path $env:RUNNER_TEMP "flutter-sdk"
 if (Test-Path $installRoot) {

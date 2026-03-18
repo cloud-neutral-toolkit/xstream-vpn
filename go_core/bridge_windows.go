@@ -262,9 +262,6 @@ func PerformAction(action, password *C.char) *C.char {
 //export IsXrayDownloading
 func IsXrayDownloading() C.int { return 0 }
 
-//export FreeCString
-func FreeCString(str *C.char) { C.free(unsafe.Pointer(str)) }
-
 //export StartXray
 func StartXray(configC *C.char) *C.char {
 	instMu.Lock()

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/xtls/libxray/xray"
 )

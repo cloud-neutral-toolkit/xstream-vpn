@@ -2,12 +2,8 @@ name: Build and Release Flutter Packages
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
-    paths-ignore:
-      - "README.md"
   pull_request:
     branches:
       - main
@@ -100,18 +96,38 @@ jobs:
           - platform: linux
             arch: x64
             runs_on: ubuntu-22.04
+            artifact_name: build-linux-x64
+            artifact_paths: |
+              build/linux/x64/release/bundle/xstream-linux.zip
+              build/linux/x64/release/AppImage/xstream-linux.AppImage
+              build/linux/x64/release/packages/*.deb
+              build/linux/x64/release/packages/*.rpm
           - platform: windows
             arch: x64
             runs_on: windows-2022
+            artifact_name: build-windows-x64
+            artifact_paths: |
+              build/windows/x64/runner/Release/xstream-windows.zip
+              build/windows/x64/runner/Release/*.msi
           - platform: macos
             arch: arm64
             runs_on: macos-14
+            artifact_name: build-macos-arm64
+            artifact_paths: |
+              build/macos/*.dmg
           - platform: ios
             arch: arm64
             runs_on: macos-14
+            artifact_name: build-ios-arm64
+            artifact_paths: |
+              build/ios/iphoneos/XStream.app.zip
+              build/ios/ipa/*.ipa
           - platform: android
             arch: arm64
             runs_on: ubuntu-22.04
+            artifact_name: build-android-arm64
+            artifact_paths: |
+              build/app/outputs/flutter-apk/app-release.apk
 
     runs-on: ${{ matrix.runs_on }}
     needs:
@@ -156,21 +172,12 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: build-${{ matrix.platform }}-${{ matrix.arch }}
-          path: |
-            build/macos/*.dmg
-            build/linux/x64/release/bundle/xstream-linux.zip
-            build/linux/x64/release/AppImage/xstream-linux.AppImage
-            build/linux/x64/release/packages/*.deb
-            build/linux/x64/release/packages/*.rpm
-            build/windows/x64/runner/Release/xstream-windows.zip
-            build/windows/x64/runner/Release/*.msi
-            build/app/outputs/flutter-apk/app-release.apk
-            build/ios/iphoneos/XStream.app.zip
-            build/ios/ipa/*.ipa
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_paths }}
+          if-no-files-found: error
 
   release:
-    if: ${{ github.event_name != 'pull_request' && github.event_name != 'schedule' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -196,11 +203,12 @@ jobs:
           RELEASE_NOTES: ${{ needs.prepare-release.outputs.release_notes }}
 
   update-readme:
-    if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     needs:
+      - prepare-release
       - release
     steps:
       - name: Checkout source

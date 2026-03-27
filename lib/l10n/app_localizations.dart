@@ -158,10 +158,12 @@ class AppLocalizations {
       'proxyDnsConfig': 'Proxy Resolver',
       'primaryDns': 'Primary DNS',
       'secondaryDns': 'Secondary DNS',
+      'tunnelDnsViaProxy': 'Tunnel DNS via Proxy',
+      'tunnelDnsViaProxyHint': 'Forces all TUN DNS queries through proxy resolver. Recommended for CN users when DoH is blocked locally.',
       'dnsDialogHintDoh':
-          'Enter HTTPS endpoints such as https://1.1.1.1/dns-query.',
+          'Enter DoH HTTPS endpoints. DNSPod / AliDNS are CN-safe.',
       'dnsDialogHintPlain':
-          'Enter DNS server addresses such as 1.1.1.1 or dns.google.',
+          'Enter plain DNS server addresses, e.g. 1.1.1.1.',
       'dnsDialogHintDirect':
           'Enter direct DNS server addresses for the Direct Resolver policy and for system DNS override on platforms that do not yet use the local Secure DNS endpoint.',
       'globalProxy': 'Global Proxy',
@@ -415,8 +417,10 @@ curl -I --proxy socks5h://127.0.0.1:1080 --max-time 15 https://grok.com''',
       'proxyDnsConfig': '代理 DNS',
       'primaryDns': '主 DNS',
       'secondaryDns': '备用 DNS',
-      'dnsDialogHintDoh': '请输入 HTTPS 端点，例如 https://1.1.1.1/dns-query。',
-      'dnsDialogHintPlain': '请输入 DNS 服务器地址，例如 1.1.1.1 或 dns.google。',
+      'tunnelDnsViaProxy': '隧道 DNS 走代理',
+      'tunnelDnsViaProxyHint': '强制所有 TUN DNS 查询经代理解析器处理。国内 DoH 被墙时建议开启。',
+      'dnsDialogHintDoh': '请输入 DoH HTTPS 端点，DNSPod / 阿里DNS 在国内可用。',
+      'dnsDialogHintPlain': '请输入 DNS 服务器地址，例如 1.1.1.1。',
       'dnsDialogHintDirect':
           '请输入直连 DNS 服务器地址，用于 Direct Resolver 策略，并继续作为尚未接入本地 Secure DNS 端点平台上的系统 DNS 来源。',
       'globalProxy': '全局代理',

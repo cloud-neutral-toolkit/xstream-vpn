@@ -108,12 +108,15 @@ class RoutePolicy {
   final List<String> tunnelDnsServers4;
   final List<String> tunnelDnsServers6;
   final bool captureSystemDnsToBuiltInDns;
+  /// When true, all TUN DNS queries are forced through proxy resolver
+  final bool forceTunnelDnsToProxy;
 
   const RoutePolicy({
     required this.domainSets,
     required this.tunnelDnsServers4,
     required this.tunnelDnsServers6,
     required this.captureSystemDnsToBuiltInDns,
+    required this.forceTunnelDnsToProxy,
   });
 
   List<String> tunDnsCidrs() {
@@ -139,6 +142,14 @@ class RoutePolicy {
           'port': '53',
           'ip': tunDnsCidrs(),
           'outboundTag': 'dns',
+        },
+      if (enableTunnelMode && forceTunnelDnsToProxy)
+        <String, dynamic>{
+          'type': 'field',
+          'inboundTag': <String>[tunInboundTag],
+          'network': 'tcp,udp',
+          'port': '53',
+          'outboundTag': 'proxy',
         },
       if (domainSets.direct.isNotEmpty)
         <String, dynamic>{

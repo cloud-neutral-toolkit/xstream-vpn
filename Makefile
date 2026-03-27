@@ -5,7 +5,8 @@ help: ## Show this help message
 	@echo "Usage: make <target> [ARCH=<arch>]"
 	@echo ""
 	@echo "Platform targets:"
-	@echo "  build-macos-arm64   Build macOS ARM64 (Apple Silicon) release + DMG"
+	@echo "  package-mac        Build macOS release + DMG (native arch)"
+	@echo "  build-macos-arm64   Build macOS ARM64 release + DMG"
 	@echo "  build-macos-x64     Build macOS x64 release + DMG"
 	@echo "  build-windows-x64   Build Windows x64 release"
 	@echo "  build-linux-x64     Build Linux x64 release"
@@ -24,6 +25,9 @@ DIR := $(shell pwd)
 FLUTTER := flutter
 GO := go
 
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
 VERSION := $(shell grep "^version:" pubspec.yaml | cut -d: -f2 | tr -d ' ')
 BUILD := $(shell echo "$(VERSION)" | cut -d+ -f2)
 MAJOR := $(shell echo "$(VERSION)" | cut -d. -f1)
@@ -33,6 +37,17 @@ PATCH := $(shell echo "$(VERSION)" | cut -d. -f3 | cut -d+ -f1)
 BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 BUILD_ID := $(shell git rev-parse --short HEAD 2>/dev/null || echo "0000000")
 BUILD_DATE := $(shell date '+%Y-%m-%d')
+
+MAKE_SCRIPT_DIR := scripts/make
+RUN_TARGET_SCRIPT := $(MAKE_SCRIPT_DIR)/run-target.sh
+
+DMG_TAG := $(shell git describe --tags --exact-match 2>/dev/null || echo "")
+DMG_NAME := $(shell \
+	if [ "$(DMG_TAG)" != "" ]; then \
+		echo "xstream-release-$(DMG_TAG).dmg"; \
+	else \
+		echo "xstream-dev-$(BUILD_ID).dmg"; \
+	fi)
 
 DART_DEFINES := --dart-define=BRANCH_NAME=$(BRANCH) --dart-define=BUILD_ID=$(BUILD_ID) --dart-define=BUILD_DATE=$(BUILD_DATE)
 
@@ -73,16 +88,26 @@ sync-macos-config: check-flutter check-macos
 		$(FLUTTER) build macos --version 2>/dev/null || true
 
 build-macos-arm64: check-flutter check-macos check-git-submodules
-	@echo ">>> Building macOS ARM64 (Apple Silicon) release"
-	./build_scripts/build_ios_xray.sh || true
-	$(FLUTTER) build macos --release --dart-define=FLUTTER_BUILD_NAME="$(VERSION)+$(BUILD)"
-	@echo ">>> Build complete: build/macos/Build/Products/Release/xstream.app"
+	@UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" FLUTTER="$(FLUTTER)" \
+		BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)" \
+		DMG_NAME="$(DMG_NAME)" \
+		"$(RUN_TARGET_SCRIPT)" macos-arm64
 
 build-macos-x64: check-flutter check-macos check-git-submodules
-	@echo ">>> Building macOS x64 release"
-	./build_scripts/build_ios_xray.sh || true
-	ARCHFLAGS="-arch x86_64" $(FLUTTER) build macos --release --dart-define=FLUTTER_BUILD_NAME="$(VERSION)+$(BUILD)"
-	@echo ">>> Build complete: build/macos/Build/Products/Release/xstream.app"
+	@UNAME_S="$(UNAME_S)" UNAME_M="$(UNAME_M)" FLUTTER="$(FLUTTER)" \
+		BRANCH="$(BRANCH)" BUILD_ID="$(BUILD_ID)" BUILD_DATE="$(BUILD_DATE)" \
+		DMG_NAME="$(DMG_NAME)" \
+		"$(RUN_TARGET_SCRIPT)" macos-intel
+
+package-mac: check-flutter check-macos check-git-submodules ## Build macOS release + DMG (native arch)
+	@if [ "$(UNAME_M)" = "arm64" ]; then \
+		$(MAKE) build-macos-arm64; \
+	elif [ "$(UNAME_M)" = "x86_64" ]; then \
+		$(MAKE) build-macos-x64; \
+	else \
+		echo "Unsupported macOS architecture: $(UNAME_M)"; \
+		exit 1; \
+	fi
 
 build-windows-x64: check-flutter check-go
 	@echo ">>> Building Windows x64 release"

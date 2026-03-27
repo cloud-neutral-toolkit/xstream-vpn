@@ -282,15 +282,39 @@ class DnsConfig {
 
   static bool get dohEnabled => transportMode.value == DnsTransportMode.doh;
 
+  static String _bootstrapProxyDefault(
+    DnsTransportMode mode, {
+    required bool primary,
+  }) {
+    if (mode == DnsTransportMode.doh) {
+      return primary ? _defaultDohDns1 : _defaultDohDns2;
+    }
+    return primary ? _defaultPlainDns1 : _defaultPlainDns2;
+  }
+
+  static String _bootstrapDirectDefault({required bool primary}) {
+    return primary ? _defaultPlainDns1 : _defaultPlainDns2;
+  }
+
   static String get proxyPrimaryDefault =>
-      dohEnabled ? _defaultDohDns1 : _defaultPlainDns1;
+      _normalizeProxyEndpoint(
+        proxyDns1.value,
+        transportMode.value,
+        primary: true,
+      );
 
   static String get proxySecondaryDefault =>
-      dohEnabled ? _defaultDohDns2 : _defaultPlainDns2;
+      _normalizeProxyEndpoint(
+        proxyDns2.value,
+        transportMode.value,
+        primary: false,
+      );
 
-  static String get directPrimaryDefault => _defaultPlainDns1;
+  static String get directPrimaryDefault =>
+      _normalizeDirectEndpoint(directDns1.value, primary: true);
 
-  static String get directSecondaryDefault => _defaultPlainDns2;
+  static String get directSecondaryDefault =>
+      _normalizeDirectEndpoint(directDns2.value, primary: false);
 
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -531,9 +555,7 @@ class DnsConfig {
     DnsTransportMode mode, {
     required bool primary,
   }) {
-    final fallback = primary
-        ? (mode == DnsTransportMode.doh ? _defaultDohDns1 : _defaultPlainDns1)
-        : (mode == DnsTransportMode.doh ? _defaultDohDns2 : _defaultPlainDns2);
+    final fallback = _bootstrapProxyDefault(mode, primary: primary);
     final trimmed = rawValue?.trim() ?? '';
     if (trimmed.isEmpty) {
       return fallback;
@@ -563,7 +585,7 @@ class DnsConfig {
   }) {
     final trimmed = endpoint?.trim() ?? '';
     if (trimmed.isEmpty) {
-      return primary ? _defaultPlainDns1 : _defaultPlainDns2;
+      return _bootstrapDirectDefault(primary: primary);
     }
 
     final uri = Uri.tryParse(trimmed);

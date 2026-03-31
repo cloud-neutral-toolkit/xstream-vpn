@@ -115,6 +115,12 @@ jobs:
             artifact_name: build-macos-arm64
             artifact_paths: |
               build/macos/*.dmg
+          - platform: macos
+            arch: x64
+            runs_on: macos-13
+            artifact_name: build-macos-x64
+            artifact_paths: |
+              build/macos/*.dmg
           - platform: ios
             arch: arm64
             runs_on: macos-14
@@ -123,9 +129,9 @@ jobs:
               build/ios/iphoneos/XStream.app.zip
               build/ios/ipa/*.ipa
           - platform: android
-            arch: arm64
+            arch: universal
             runs_on: ubuntu-22.04
-            artifact_name: build-android-arm64
+            artifact_name: build-android-universal
             artifact_paths: |
               build/app/outputs/flutter-apk/app-release.apk
 
@@ -142,6 +148,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Set up Flutter SDK
         uses: ./.github/actions/setup-flutter-sdk
@@ -160,6 +167,13 @@ jobs:
         run: |
           choco install mingw --no-progress -y
           "C:\ProgramData\mingw64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up Java
+        if: ${{ matrix.platform == 'android' }}
+        uses: actions/setup-java@5ee347f83fa05d7d884de5da4f4f35c509a2c6b0
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Install platform dependencies
         shell: bash

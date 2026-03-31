@@ -2,6 +2,8 @@ name: Build and Release Flutter Packages
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   pull_request:

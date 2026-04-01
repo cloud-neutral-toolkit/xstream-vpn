@@ -1,3 +1,15 @@
+
+# XStream v1.1.0
+
+_Release Date: 2026-03-27_
+
+## 🐛 Fixes
+- Fixed TUN mode DNS resolution failure in CN: default DoH DNS changed from blocked 1.1.1.1/8.8.8.8 to domestic-safe DNSPod and AliDNS
+
+## ✨ Features
+- Added DNS preset quick-select chips in proxy DNS settings (DNSPod, AliDNS, 360, Cloudflare, Google)
+- Added "Tunnel DNS via Proxy" toggle: forces all TUN DNS queries through proxy resolver via Xray routing rules (solves GFW DoH blocking at the config level)
+
 # XStream v0.3.5
 
 _Release Date: 2026-03-07_

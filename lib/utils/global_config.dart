@@ -210,6 +210,25 @@ enum DnsTransportMode {
   }
 }
 
+/// DNS preset for quick selection in settings UI
+class DnsPreset {
+  final String label;
+  final String dohUrl;
+  final String plainHost;
+
+  const DnsPreset(this.label, this.dohUrl, this.plainHost);
+}
+  /// Preset DNS options for quick selection in settings UI
+  /// (label, dohUrl, plainHost)
+  static const List<DnsPreset> dnsPresets = <DnsPreset>[
+    DnsPreset('DNSPod (CN)',    'https://doh.pub/dns-query',         '1.12.12.12'),
+    DnsPreset('AliDNS (CN)',    'https://dns.alidns.com/dns-query',  '223.6.6.6'),
+    DnsPreset('360 (CN)',       'https://doh.360.cn/dns-query',      '101.226.4.6'),
+    DnsPreset('Cloudflare',     'https://1.1.1.1/dns-query',         '1.1.1.1'),
+    DnsPreset('Google',         'https://8.8.8.8/dns-query',         '8.8.8.8'),
+  ];
+
+
 class DnsConfig {
   static const _proxyDns1Key = 'dnsServer1';
   static const _proxyDns2Key = 'dnsServer2';
@@ -218,10 +237,12 @@ class DnsConfig {
   static const _transportModeKey = 'dnsTransportMode';
   static const _legacyDotEnabledKey = 'tunDnsOverTls';
   static const _fakeDnsEnabledKey = 'fakeDnsEnabled';
+  static const _tunnelDnsViaProxyKey = 'tunnelDnsViaProxy';
+  // Domestic-safe DoH DNS (work in CN, resolve via remote proxy)
+  static const _defaultDohDns1 = 'https://doh.pub/dns-query';        // DNSPod
+  static const _defaultDohDns2 = 'https://dns.alidns.com/dns-query';  // Aliyun
   static const _defaultPlainDns1 = '1.1.1.1';
   static const _defaultPlainDns2 = '8.8.8.8';
-  static const _defaultDohDns1 = 'https://1.1.1.1/dns-query';
-  static const _defaultDohDns2 = 'https://8.8.8.8/dns-query';
   static const _defaultDirectDns6Servers = <String>[
     '2606:4700:4700::1111',
     '2001:4860:4860::8888',
@@ -279,6 +300,8 @@ class DnsConfig {
   static final ValueNotifier<DnsTransportMode> transportMode =
       ValueNotifier<DnsTransportMode>(DnsTransportMode.doh);
   static final ValueNotifier<bool> fakeDnsEnabled = ValueNotifier<bool>(false);
+  /// Force tunnel DNS queries through proxy resolver (recommended for CN users)
+  static final ValueNotifier<bool> tunnelDnsViaProxy = ValueNotifier<bool>(false);
 
   static bool get dohEnabled => transportMode.value == DnsTransportMode.doh;
 
@@ -362,6 +385,10 @@ class DnsConfig {
     });
     fakeDnsEnabled.addListener(() {
       prefs.setBool(_fakeDnsEnabledKey, fakeDnsEnabled.value);
+    });
+    tunnelDnsViaProxy.value = prefs.getBool(_tunnelDnsViaProxyKey) ?? false;
+    tunnelDnsViaProxy.addListener(() {
+      prefs.setBool(_tunnelDnsViaProxyKey, tunnelDnsViaProxy.value);
     });
   }
 
@@ -546,6 +573,7 @@ class DnsConfig {
         tunnelDnsServers4: systemTunnelDnsServers4(),
         tunnelDnsServers6: systemTunnelDnsServers6(),
         captureSystemDnsToBuiltInDns: shouldCaptureSystemDnsToBuiltInDns,
+        forceTunnelDnsToProxy: tunnelDnsViaProxy.value,
       ),
     );
   }

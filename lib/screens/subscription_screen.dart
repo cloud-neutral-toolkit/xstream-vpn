@@ -5,6 +5,8 @@ import '../../utils/global_config.dart';
 import '../../utils/native_bridge.dart';
 import '../../utils/app_logger.dart';
 import '../../widgets/log_console.dart' show LogLevel;
+import '../../services/account_usage_service.dart';
+import '../../services/session/session_manager.dart';
 import '../../services/vpn_config_service.dart';
 import '../l10n/app_localizations.dart';
 
@@ -28,6 +30,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _autoFlowRunning = false;
   Timer? _autoParseDebounce;
   String _lastAutoParsedUri = '';
+  final AccountUsageService _accountUsageService = AccountUsageService();
+  AccountUsageSummary? _usageSummary;
+  bool _usageLoading = false;
 
   @override
   void initState() {
@@ -48,6 +53,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (initialUri.isNotEmpty) {
       _vlessUriController.text = initialUri;
     }
+
+    _loadUsageSummary();
   }
 
   @override
@@ -221,6 +228,36 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
+  Future<void> _loadUsageSummary() async {
+    final sessionToken = SessionManager.instance.sessionToken;
+    if (sessionToken == null || sessionToken.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _usageLoading = true;
+    });
+
+    try {
+      final summary = await _accountUsageService.fetchUsageSummary(
+        baseUrl: SessionManager.instance.baseUrl.value,
+        sessionToken: sessionToken,
+      );
+      if (!mounted) return;
+      setState(() {
+        _usageSummary = summary;
+      });
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _usageLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -238,6 +275,47 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Card(
+                        elevation: 0,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.35),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '账户用量',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _usageLoading
+                                    ? '正在从 accounts.svc.plus 同步权威流量统计…'
+                                    : _usageSummary == null
+                                        ? '登录后可查看由 accounts.svc.plus 聚合的权威流量与余额。'
+                                        : '累计 ${_usageSummary!.totalBytes} B，余额 ${_usageSummary!.currentBalance.toStringAsFixed(2)}，同步延迟约 ${_usageSummary!.syncDelaySeconds} 秒。',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'xstream-vpn 不在本地计算账单，展示数据以服务端分钟桶聚合结果为准。',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
                       TextField(
                         controller: _vlessUriController,
                         decoration: InputDecoration(
@@ -278,7 +356,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         const SizedBox(height: 16),
                         Text(
                           _message,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.error),
                         ),
                       ],
                     ],

@@ -20,7 +20,14 @@ install_root="${RUNNER_TEMP:?RUNNER_TEMP is required}/flutter-sdk"
 rm -rf "$install_root"
 mkdir -p "$install_root"
 
-curl -fsSL "https://storage.googleapis.com/flutter_infra_release/releases/${archive}" -o "$install_root/flutter-sdk.archive"
+curl -fsSL \
+  --retry 5 \
+  --retry-delay 2 \
+  --retry-connrefused \
+  --connect-timeout 15 \
+  --max-time 600 \
+  "https://storage.googleapis.com/flutter_infra_release/releases/${archive}" \
+  -o "$install_root/flutter-sdk.archive"
 if [[ "$archive" == *.tar.xz ]]; then
   tar -xJf "$install_root/flutter-sdk.archive" -C "$install_root"
 else

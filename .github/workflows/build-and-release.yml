@@ -119,7 +119,7 @@ jobs:
               build/macos/*.dmg
           - platform: macos
             arch: x64
-            runs_on: macos-14
+            runs_on: macos-13
             artifact_name: build-macos-x64
             artifact_paths: |
               build/macos/*.dmg

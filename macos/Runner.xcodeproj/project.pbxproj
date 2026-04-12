@@ -316,20 +316,19 @@
 			productReference = 331C80D5294CF71000263BE5 /* RunnerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		33CC10EC2044A3C60003C045 /* Runner */ = {
+			33CC10EC2044A3C60003C045 /* Runner */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 33CC10FB2044A3C60003C045 /* Build configuration list for PBXNativeTarget "Runner" */;
-			buildPhases = (
-				FEEF1AC9D55E9CD0EB3B9E7D /* [CP] Check Pods Manifest.lock */,
-				33CC10E92044A3C60003C045 /* Sources */,
-				33CC10EA2044A3C60003C045 /* Frameworks */,
-				33CC10EB2044A3C60003C045 /* Resources */,
-				7E3B8C102F8B400100A1B2C3 /* Stamp Bundle Version */,
-				33CC110E2044A8840003C045 /* Bundle Framework */,
-				3399D490228B24CF009A79C7 /* ShellScript */,
-				C42253198E8392395A773531 /* Embed Foundation Extensions */,
-				4687F7501E1A3B7C2CE83565 /* [CP] Embed Pods Frameworks */,
-			);
+				buildPhases = (
+					FEEF1AC9D55E9CD0EB3B9E7D /* [CP] Check Pods Manifest.lock */,
+					33CC10E92044A3C60003C045 /* Sources */,
+					33CC10EA2044A3C60003C045 /* Frameworks */,
+					33CC10EB2044A3C60003C045 /* Resources */,
+					33CC110E2044A8840003C045 /* Bundle Framework */,
+					3399D490228B24CF009A79C7 /* ShellScript */,
+					C42253198E8392395A773531 /* Embed Foundation Extensions */,
+					4687F7501E1A3B7C2CE83565 /* [CP] Embed Pods Frameworks */,
+				);
 			buildRules = (
 			);
 			dependencies = (
@@ -341,16 +340,15 @@
 			productReference = 33CC10ED2044A3C60003C045 /* xstream.app */;
 			productType = "com.apple.product-type.application";
 		};
-		4C96C6D04CB8FBA943A97CE6 /* PacketTunnel */ = {
+			4C96C6D04CB8FBA943A97CE6 /* PacketTunnel */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3A5B4457665F1C30307E7A5C /* Build configuration list for PBXNativeTarget "PacketTunnel" */;
-			buildPhases = (
-				A1B2C3D42F7E100100ABCDEF /* Build Xray Bridge */,
-				EF04854776A8BC5765BBED62 /* Sources */,
-				E8C4044A130EED63FECB10BF /* Frameworks */,
-				1728418EB957CB4B3A68F260 /* Resources */,
-				7E3B8C112F8B400100A1B2C3 /* Stamp Bundle Version */,
-			);
+				buildPhases = (
+					A1B2C3D42F7E100100ABCDEF /* Build Xray Bridge */,
+					EF04854776A8BC5765BBED62 /* Sources */,
+					E8C4044A130EED63FECB10BF /* Frameworks */,
+					1728418EB957CB4B3A68F260 /* Resources */,
+				);
 			buildRules = (
 			);
 			dependencies = (
@@ -457,48 +455,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "mkdir -p \"$PROJECT_DIR\"/Flutter/generated \"$PROJECT_DIR\"/Flutter/ephemeral && echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/generated/.app_filename && echo \"$PRODUCT_NAME.app\" > \"$PROJECT_DIR\"/Flutter/ephemeral/.app_filename && FLUTTER_SOURCE_ROOT=\"${FLUTTER_SOURCE_ROOT_OVERRIDE:-$SOURCE_ROOT}\" && SOURCE_ROOT=\"$FLUTTER_SOURCE_ROOT\" \"$FLUTTER_ROOT\"/packages/flutter_tools/bin/macos_assemble.sh embed\n";
-		};
-		7E3B8C102F8B400100A1B2C3 /* Stamp Bundle Version */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/../pubspec.yaml",
-			);
-			name = "Stamp Bundle Version";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/../scripts/xcode_stamp_bundle_version.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		7E3B8C112F8B400100A1B2C3 /* Stamp Bundle Version */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/../pubspec.yaml",
-			);
-			name = "Stamp Bundle Version";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/../scripts/xcode_stamp_bundle_version.sh\"\n";
-			showEnvVarsInLog = 0;
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

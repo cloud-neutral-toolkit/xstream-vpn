@@ -1,4 +1,4 @@
-//go:build !ios && !darwin
+//go:build ios || darwin
 
 package main
 
@@ -14,5 +14,3 @@ import "unsafe"
 func FreeCString(str *C.char) {
 	C.free(unsafe.Pointer(str))
 }
-
-func main() {}

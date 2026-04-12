@@ -42,7 +42,7 @@ export CC="$(xcrun --sdk iphoneos --find clang)"
 export CGO_CFLAGS="-isysroot $(xcrun --sdk iphoneos --show-sdk-path)"
 
 "$GO_BIN" mod download
-"$GO_BIN" build -buildmode=c-archive -o "$OUTPUT_ARCHIVE" ./bridge_ios.go
+"$GO_BIN" build -buildmode=c-archive -o "$OUTPUT_ARCHIVE" ./bridge_darwin.go ./bridge_ios.go
 
 echo ">>> Output archive: $OUTPUT_ARCHIVE"
 echo ">>> Output header: $OUTPUT_HEADER"

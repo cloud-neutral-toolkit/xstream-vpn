@@ -1,3 +1,10 @@
+# XStream v1.0.4
+
+_Release Date: 2026-04-12_
+
+## ✅ Changes
+- Fixed Windows MSI packaging so the installer tree generator accepts the root directory entry during packaging
+
 # XStream v0.3.5
 
 _Release Date: 2026-03-07_

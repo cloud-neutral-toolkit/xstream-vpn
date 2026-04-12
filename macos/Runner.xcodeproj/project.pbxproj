@@ -523,6 +523,7 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/../go_core/bridge.go",
 				"$(SRCROOT)/../go_core/bridge_ios.go",
 				"$(SRCROOT)/../go_core/go.mod",
 				"$(SRCROOT)/../go_core/go.sum",

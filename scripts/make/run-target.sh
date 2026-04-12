@@ -33,6 +33,18 @@ run_macos_build() {
   local runtime_arch="$4"
   local make_target="$5"
   local skip_msg="$6"
+  local codesign_env=()
+
+  if [[ "${XSTREAM_MACOS_NO_CODESIGN:-0}" == "1" ]]; then
+    # CI packaging builds should not require Apple provisioning profiles.
+    # Disable Xcode signing so `flutter build macos` can succeed without profiles.
+    codesign_env=(
+      CODE_SIGNING_ALLOWED=NO
+      CODE_SIGNING_REQUIRED=NO
+      CODE_SIGN_IDENTITY=
+      EXPANDED_CODE_SIGN_IDENTITY=
+    )
+  fi
 
   if [[ "$uname_s" != "Darwin" || "$uname_m" != "$expected_machine" ]]; then
     echo "$skip_msg"
@@ -131,9 +143,9 @@ run_macos_build() {
 
   # Sync Generated.xcconfig so Xcode Archive picks up the correct version from pubspec.yaml.
   echo "Syncing Flutter build config (pubspec.yaml → Generated.xcconfig)..."
-  "$flutter_bin" build macos --config-only
+  "${codesign_env[@]}" "$flutter_bin" build macos --config-only
 
-  "$flutter_bin" build macos --release \
+  "${codesign_env[@]}" "$flutter_bin" build macos --release \
     "${common_dart_defines[@]}"
 
   if [[ ! -d "$macos_app_bundle" ]]; then

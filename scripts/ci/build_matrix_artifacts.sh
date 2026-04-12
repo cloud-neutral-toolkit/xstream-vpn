@@ -25,7 +25,7 @@ case "$platform" in
     pwsh -File ./build_scripts/package_windows_msi.ps1
     ;;
   macos)
-    XSTREAM_SKIP_MACOS_BUILD_LOCK=1 make "build-macos-${arch}"
+    XSTREAM_SKIP_MACOS_BUILD_LOCK=1 XSTREAM_MACOS_NO_CODESIGN=1 make "build-macos-${arch}"
     ;;
   android)
     ./build_scripts/build_android_apk.sh

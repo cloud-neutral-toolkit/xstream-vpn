@@ -175,6 +175,11 @@ jobs:
         shell: bash
         run: bash ./scripts/ci/setup_platform_deps.sh "$PLATFORM"
 
+      - name: Guard Windows MSI script root handling
+        if: ${{ matrix.platform == 'windows' }}
+        shell: bash
+        run: bash ./scripts/ci/check_windows_msi_script.sh
+
       - name: Build platform artifacts
         shell: bash
         run: bash ./scripts/ci/build_matrix_artifacts.sh "$PLATFORM" "$ARCH"

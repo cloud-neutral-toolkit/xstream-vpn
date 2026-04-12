@@ -99,7 +99,8 @@ function Convert-ToFileId {
 
 function Emit-DirectoryContents {
     param(
-        [Parameter(Mandatory = $true)][string]$RelativeDirectory,
+        [AllowEmptyString()]
+        [string]$RelativeDirectory,
         [Parameter(Mandatory = $true)][int]$IndentLevel,
         [Parameter(Mandatory = $true)][hashtable]$FilesByDirectory,
         [Parameter(Mandatory = $true)][hashtable]$ChildrenByDirectory

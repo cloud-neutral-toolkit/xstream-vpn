@@ -143,9 +143,9 @@ run_macos_build() {
 
   # Sync Generated.xcconfig so Xcode Archive picks up the correct version from pubspec.yaml.
   echo "Syncing Flutter build config (pubspec.yaml → Generated.xcconfig)..."
-  "${codesign_env[@]}" "$flutter_bin" build macos --config-only
+  env "${codesign_env[@]}" "$flutter_bin" build macos --config-only
 
-  "${codesign_env[@]}" "$flutter_bin" build macos --release \
+  env "${codesign_env[@]}" "$flutter_bin" build macos --release \
     "${common_dart_defines[@]}"
 
   if [[ ! -d "$macos_app_bundle" ]]; then

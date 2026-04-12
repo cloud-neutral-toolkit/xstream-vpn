@@ -117,12 +117,6 @@ jobs:
             artifact_name: build-macos-arm64
             artifact_paths: |
               build/macos/*.dmg
-          - platform: macos
-            arch: x64
-            runs_on: macos-14
-            artifact_name: build-macos-x64
-            artifact_paths: |
-              build/macos/*.dmg
           - platform: ios
             arch: arm64
             runs_on: macos-14
@@ -180,6 +174,11 @@ jobs:
       - name: Install platform dependencies
         shell: bash
         run: bash ./scripts/ci/setup_platform_deps.sh "$PLATFORM"
+
+      - name: Guard Windows MSI script root handling
+        if: ${{ matrix.platform == 'windows' }}
+        shell: bash
+        run: bash ./scripts/ci/check_windows_msi_script.sh
 
       - name: Build platform artifacts
         shell: bash

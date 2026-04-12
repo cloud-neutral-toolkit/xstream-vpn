@@ -60,7 +60,7 @@ echo "[xray-bridge] building for darwin/${ARCH} -> ${TMP_LIB}"
   export CC="$(xcrun --sdk macosx --find clang)"
   export CGO_CFLAGS="-isysroot $(xcrun --sdk macosx --show-sdk-path)"
   export CGO_LDFLAGS="-isysroot $(xcrun --sdk macosx --show-sdk-path)"
-  "$GO_BIN" build -trimpath -buildmode=c-shared -o "${TMP_LIB}" ./bridge_ios.go
+  "$GO_BIN" build -trimpath -buildmode=c-shared -o "${TMP_LIB}" ./bridge_darwin.go ./bridge_ios.go
 )
 
 if [[ ! -f "${TMP_LIB}" ]]; then

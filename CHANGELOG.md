@@ -1,4 +1,3 @@
-
 # XStream v1.1.0
 
 _Release Date: 2026-03-27_
@@ -9,6 +8,13 @@ _Release Date: 2026-03-27_
 ## ✨ Features
 - Added DNS preset quick-select chips in proxy DNS settings (DNSPod, AliDNS, 360, Cloudflare, Google)
 - Added "Tunnel DNS via Proxy" toggle: forces all TUN DNS queries through proxy resolver via Xray routing rules (solves GFW DoH blocking at the config level)
+
+# XStream v1.0.4
+
+_Release Date: 2026-04-12_
+
+## ✅ Changes
+- Fixed Windows MSI packaging so the installer tree generator accepts the root directory entry during packaging
 
 # XStream v0.3.5
 

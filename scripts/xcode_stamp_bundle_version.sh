@@ -1,67 +1,64 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-resolve_repo_root() {
-  if [ -n "${FLUTTER_APPLICATION_PATH:-}" ] && [ -f "${FLUTTER_APPLICATION_PATH}/pubspec.yaml" ]; then
-    printf '%s\n' "${FLUTTER_APPLICATION_PATH}"
-    return
-  fi
+# Stamp CFBundleShortVersionString / CFBundleVersion from pubspec.yaml into the built Info.plist.
+# This is used by Xcode archive and CI builds to keep versioning consistent across targets.
 
-  if [ -n "${FLUTTER_SOURCE_ROOT_OVERRIDE:-}" ] && [ -f "${FLUTTER_SOURCE_ROOT_OVERRIDE}/pubspec.yaml" ]; then
-    printf '%s\n' "${FLUTTER_SOURCE_ROOT_OVERRIDE}"
-    return
-  fi
+root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+pubspec="${PUBSPEC_PATH:-${root_dir}/pubspec.yaml}"
 
-  if [ -n "${PROJECT_DIR:-}" ] && [ -f "${PROJECT_DIR}/../pubspec.yaml" ]; then
-    (
-      cd "${PROJECT_DIR}/.." >/dev/null 2>&1
-      pwd
-    )
-    return
-  fi
-
-  echo "error: unable to locate pubspec.yaml for version stamping" >&2
-  exit 1
-}
-
-plist_set() {
-  key="$1"
-  value="$2"
-  plist="$3"
-
-  if ! /usr/libexec/PlistBuddy -c "Set :${key} ${value}" "${plist}" >/dev/null 2>&1; then
-    /usr/libexec/PlistBuddy -c "Add :${key} string ${value}" "${plist}" >/dev/null
-  fi
-}
-
-repo_root="$(resolve_repo_root)"
-pubspec_path="${repo_root}/pubspec.yaml"
-version_line="$(sed -n 's/^version:[[:space:]]*//p' "${pubspec_path}" | head -n 1)"
-
-case "${version_line}" in
-  *+*)
-    build_name="${version_line%%+*}"
-    build_number="${version_line##*+}"
-    ;;
-  *)
-    echo "error: invalid pubspec version '${version_line}'" >&2
-    exit 1
-    ;;
-esac
-
-if [ -z "${TARGET_BUILD_DIR:-}" ] || [ -z "${INFOPLIST_PATH:-}" ]; then
-  echo "error: TARGET_BUILD_DIR or INFOPLIST_PATH is not set" >&2
+if [[ ! -f "$pubspec" ]]; then
+  echo "[stamp-version] ❌ pubspec.yaml not found: ${pubspec}" >&2
   exit 1
 fi
 
-plist_path="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
-
-if [ ! -f "${plist_path}" ]; then
-  echo "warning: skipping version stamp because plist does not exist at ${plist_path}" >&2
-  exit 0
+version_line="$(awk -F': ' '/^[[:space:]]*version:[[:space:]]*/ {print $2; exit}' "$pubspec" | tr -d '\r' | xargs || true)"
+if [[ -z "$version_line" ]]; then
+  echo "[stamp-version] ❌ version not found in pubspec.yaml" >&2
+  exit 1
 fi
 
-plist_set "CFBundleShortVersionString" "${build_name}" "${plist_path}"
-plist_set "CFBundleVersion" "${build_number}" "${plist_path}"
+# Supports both Flutter's canonical `X.Y.Z+BUILD` and this repo's `X.Y.Z-BUILD`.
+marketing="$version_line"
+build=""
 
-echo "Stamped ${plist_path} -> ${build_name} (${build_number})"
+if [[ "$marketing" == *"+"* ]]; then
+  build="${marketing##*+}"
+  marketing="${marketing%%+*}"
+elif [[ "$marketing" == *"-"* ]]; then
+  build="${marketing##*-}"
+  marketing="${marketing%%-*}"
+fi
+
+if [[ -z "$build" ]]; then
+  build="0"
+fi
+
+plist="${TARGET_BUILD_DIR:?}/${INFOPLIST_PATH:?}"
+if [[ ! -f "$plist" ]]; then
+  echo "[stamp-version] ❌ Info.plist not found: ${plist}" >&2
+  exit 1
+fi
+
+plistbuddy="/usr/libexec/PlistBuddy"
+
+set_or_add() {
+  local key="$1"
+  local value="$2"
+  if "$plistbuddy" -c "Print :${key}" "$plist" >/dev/null 2>&1; then
+    "$plistbuddy" -c "Set :${key} ${value}" "$plist" >/dev/null
+  else
+    "$plistbuddy" -c "Add :${key} string ${value}" "$plist" >/dev/null
+  fi
+}
+
+set_or_add "CFBundleShortVersionString" "$marketing"
+set_or_add "CFBundleVersion" "$build"
+
+if [[ -n "${SCRIPT_OUTPUT_FILE_0:-}" ]]; then
+  mkdir -p "$(dirname "$SCRIPT_OUTPUT_FILE_0")"
+  echo "${marketing}-${build}" > "$SCRIPT_OUTPUT_FILE_0"
+fi
+
+echo "[stamp-version] ✅ ${TARGET_NAME:-target}: ${marketing} (${build})"
+

@@ -145,8 +145,29 @@ run_macos_build() {
   echo "Syncing Flutter build config (pubspec.yaml → Generated.xcconfig)..."
   env "${codesign_env[@]}" "$flutter_bin" build macos --config-only
 
-  env "${codesign_env[@]}" "$flutter_bin" build macos --release \
-    "${common_dart_defines[@]}"
+  if [[ "${XSTREAM_MACOS_NO_CODESIGN:-0}" == "1" ]]; then
+    # `flutter build macos` still enforces provisioning profiles when the Xcode project has manual signing.
+    # For CI packaging we invoke xcodebuild directly with signing disabled and a fixed build output dir.
+    echo "Building macOS application via xcodebuild (codesign disabled)..."
+    xcodebuild \
+      -workspace "${ROOT_DIR}/macos/Runner.xcworkspace" \
+      -scheme Runner \
+      -configuration Release \
+      -destination 'generic/platform=macOS' \
+      -derivedDataPath "${ROOT_DIR}/build/macos/Build/Intermediates.noindex" \
+      CONFIGURATION_BUILD_DIR="${ROOT_DIR}/build/macos/Build/Products/Release" \
+      CODE_SIGNING_ALLOWED=NO \
+      CODE_SIGNING_REQUIRED=NO \
+      CODE_SIGN_IDENTITY= \
+      EXPANDED_CODE_SIGN_IDENTITY= \
+      CODE_SIGN_STYLE=Manual \
+      DEVELOPMENT_TEAM= \
+      PROVISIONING_PROFILE_SPECIFIER= \
+      PROVISIONING_PROFILE=
+  else
+    env "${codesign_env[@]}" "$flutter_bin" build macos --release \
+      "${common_dart_defines[@]}"
+  fi
 
   if [[ ! -d "$macos_app_bundle" ]]; then
     echo "❌ Build finished but app bundle was not found: ${macos_app_bundle}"

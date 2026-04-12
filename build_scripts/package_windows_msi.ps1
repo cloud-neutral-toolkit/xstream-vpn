@@ -99,12 +99,16 @@ function Convert-ToFileId {
 
 function Emit-DirectoryContents {
     param(
-        [AllowEmptyString()]
+        [AllowNull()]
         [string]$RelativeDirectory,
         [Parameter(Mandatory = $true)][int]$IndentLevel,
         [Parameter(Mandatory = $true)][hashtable]$FilesByDirectory,
         [Parameter(Mandatory = $true)][hashtable]$ChildrenByDirectory
     )
+
+    if ([string]::IsNullOrWhiteSpace($RelativeDirectory)) {
+        $RelativeDirectory = ""
+    }
 
     $indent = "  " * $IndentLevel
     $lines = New-Object System.Collections.Generic.List[string]
@@ -225,7 +229,7 @@ foreach ($directory in $directories) {
     $childrenByDirectory[$parent].Add($directory) | Out-Null
 }
 
-$directoryXml = Emit-DirectoryContents -RelativeDirectory "" -IndentLevel 3 -FilesByDirectory $filesByDirectory -ChildrenByDirectory $childrenByDirectory
+$directoryXml = Emit-DirectoryContents -RelativeDirectory $null -IndentLevel 3 -FilesByDirectory $filesByDirectory -ChildrenByDirectory $childrenByDirectory
 
 $wxsContent = @"
 <?xml version="1.0" encoding="UTF-8"?>

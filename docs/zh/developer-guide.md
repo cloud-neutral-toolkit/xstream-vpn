@@ -12,6 +12,16 @@
 - 主要实现与运维目录: `scripts/`, `test/`, `lib/`, `ios/`, `android/`, `web/`
 - `package.json` 脚本快照: No package.json scripts were detected.
 
+## 工程实现参考入口
+
+- 总入口: [docs/engineering/README.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/README.md)
+- 覆盖矩阵: [docs/engineering/source-coverage.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/source-coverage.md)
+- Flutter 壳层与界面: [docs/engineering/flutter-shell-ui.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/flutter-shell-ui.md)
+- Flutter 运行时服务: [docs/engineering/flutter-runtime-services.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/flutter-runtime-services.md)
+- Flutter 桥接与契约: [docs/engineering/flutter-bridge-contracts.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/flutter-bridge-contracts.md)
+- Go Core FFI: [docs/engineering/go-core-ffi.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/go-core-ffi.md)
+- 原生宿主与 Packet Tunnel: [docs/engineering/native-platform-hosts.md](/Users/shenlan/workspaces/cloud-neutral-toolkit/xstream-vpn/docs/engineering/native-platform-hosts.md)
+
 ## 需要继续归并的现有文档
 
 - `CONTRIBUTING.md`

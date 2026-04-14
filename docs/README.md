@@ -9,6 +9,7 @@ This `docs/` directory now has a bilingual canonical layer for the current repos
 - Coverage checklist / 覆盖检查矩阵: `docs/DOC_COVERAGE.md`
 - English index / 英文入口: `docs/en/README.md`
 - 中文入口 / Chinese index: `docs/zh/README.md`
+- Engineering reference / 工程实现参考: `docs/engineering/README.md`
 
 ## Canonical Bilingual Pages / 双语规范页
 

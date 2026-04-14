@@ -18,6 +18,16 @@
 - [开发手册](developer-guide.md)
 - [Vibe Coding 参考](vibe-coding-reference.md)
 
+## 工程实现参考
+
+- [工程实现总索引](../engineering/README.md)
+- [源码覆盖矩阵](../engineering/source-coverage.md)
+- [Flutter 壳层与界面参考](../engineering/flutter-shell-ui.md)
+- [Flutter 运行时服务参考](../engineering/flutter-runtime-services.md)
+- [Flutter 桥接与调用契约参考](../engineering/flutter-bridge-contracts.md)
+- [Go Core FFI 参考](../engineering/go-core-ffi.md)
+- [原生宿主与 Packet Tunnel 参考](../engineering/native-platform-hosts.md)
+
 ## 待归并的历史文档
 
 - `CONTRIBUTING.md`

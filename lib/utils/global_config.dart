@@ -218,16 +218,6 @@ class DnsPreset {
 
   const DnsPreset(this.label, this.dohUrl, this.plainHost);
 }
-  /// Preset DNS options for quick selection in settings UI
-  /// (label, dohUrl, plainHost)
-  static const List<DnsPreset> dnsPresets = <DnsPreset>[
-    DnsPreset('DNSPod (CN)',    'https://doh.pub/dns-query',         '1.12.12.12'),
-    DnsPreset('AliDNS (CN)',    'https://dns.alidns.com/dns-query',  '223.6.6.6'),
-    DnsPreset('360 (CN)',       'https://doh.360.cn/dns-query',      '101.226.4.6'),
-    DnsPreset('Cloudflare',     'https://1.1.1.1/dns-query',         '1.1.1.1'),
-    DnsPreset('Google',         'https://8.8.8.8/dns-query',         '8.8.8.8'),
-  ];
-
 
 class DnsConfig {
   static const _proxyDns1Key = 'dnsServer1';
@@ -261,6 +251,16 @@ class DnsConfig {
     'full:connectivitycheck.gstatic.com',
     'full:msftconnecttest.com',
     'full:msftncsi.com',
+  ];
+
+  /// Preset DNS options for quick selection in settings UI
+  /// (label, dohUrl, plainHost)
+  static const List<DnsPreset> dnsPresets = <DnsPreset>[
+    DnsPreset('DNSPod (CN)', 'https://doh.pub/dns-query', '1.12.12.12'),
+    DnsPreset('AliDNS (CN)', 'https://dns.alidns.com/dns-query', '223.6.6.6'),
+    DnsPreset('360 (CN)', 'https://doh.360.cn/dns-query', '101.226.4.6'),
+    DnsPreset('Cloudflare', 'https://1.1.1.1/dns-query', '1.1.1.1'),
+    DnsPreset('Google', 'https://8.8.8.8/dns-query', '8.8.8.8'),
   ];
   static const _defaultProxyDomains = <String>[];
   static const _defaultFakeDomains = <String>[];

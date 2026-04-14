@@ -99,7 +99,7 @@ function Convert-ToFileId {
 
 function Emit-DirectoryContents {
     param(
-        [AllowNull()]
+        [AllowEmptyString()]
         [string]$RelativeDirectory,
         [Parameter(Mandatory = $true)][int]$IndentLevel,
         [Parameter(Mandatory = $true)][hashtable]$FilesByDirectory,
@@ -229,7 +229,7 @@ foreach ($directory in $directories) {
     $childrenByDirectory[$parent].Add($directory) | Out-Null
 }
 
-$directoryXml = Emit-DirectoryContents -RelativeDirectory $null -IndentLevel 3 -FilesByDirectory $filesByDirectory -ChildrenByDirectory $childrenByDirectory
+$directoryXml = Emit-DirectoryContents -RelativeDirectory "" -IndentLevel 3 -FilesByDirectory $filesByDirectory -ChildrenByDirectory $childrenByDirectory
 
 $wxsContent = @"
 <?xml version="1.0" encoding="UTF-8"?>
